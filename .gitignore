@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Generated episode packages. These can contain transcripts and other
+# publisher-derived artifacts, so keep them out of public history.
+podcast-output/
+
+# Local-only env files (none expected, but defensive).
+.env
+.env.local
+*.local
+
+# Build / serve logs
+*.log
+
+# Local Claude Code working notes — keep on disk, don't ship
+CLAUDE.md

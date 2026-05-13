@@ -1,0 +1,1447 @@
+{
+  "Affect profiles": {
+    "term": "Affect profiles",
+    "category": "concept",
+    "notes": "The four quadrants (mad scientist, cheerleader, judge, poet) Brooks uses to classify emotional baselines by positive and negative affect intensity, measured via PANAS.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Agency": {
+    "term": "Agency",
+    "category": "concept",
+    "notes": "The episode's organising concept — the disposition to change the world around you rather than wait for permission. Schoening: 'I don't think agency is very evenly distributed.'",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Airbnb": {
+    "term": "Airbnb",
+    "category": "company",
+    "notes": "Company listed in Gil's investment/advisory background",
+    "url": "",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "AlexNet": {
+    "term": "AlexNet",
+    "category": "concept",
+    "notes": "AI milestone discussed as an early signal of deep learning acceleration",
+    "url": "https://en.wikipedia.org/wiki/AlexNet",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "AlphaGo / Lee Sedol": {
+    "term": "AlphaGo / Lee Sedol",
+    "category": "concept",
+    "notes": "DeepMind's Go-playing system and Sedol's famous loss — Schoening's example of AI exceeding the top human in a defined domain.",
+    "url": "https://deepmind.google/research/alphago",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Andrew Mason": {
+    "term": "Andrew Mason",
+    "category": "person",
+    "notes": "Founder of Groupon; ousted as CEO in 2013. Source of Eric's email-frequency death-spiral anecdote.",
+    "url": "https://en.wikipedia.org/wiki/Andrew_Mason",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Anduril": {
+    "term": "Anduril",
+    "category": "company",
+    "notes": "Defense technology company discussed in relation to market/team exceptions",
+    "url": "",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Anthropic": {
+    "term": "Anthropic",
+    "category": "organization",
+    "notes": "AI safety lab; uses an outside Long-Term Benefit Trust of AI-safety trustees to appoint a faction of its for-profit board.",
+    "url": "https://www.anthropic.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible",
+      "lenny-schoening-agency"
+    ]
+  },
+  "Apple": {
+    "term": "Apple",
+    "category": "company",
+    "notes": "Cited for parts-pairing on iPhones and for shredding traded-in devices to prevent harvest.",
+    "url": "https://www.apple.com/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Arthur Brooks": {
+    "term": "Arthur Brooks",
+    "category": "person",
+    "notes": "Harvard social scientist and bestselling author; coined the everyday vocabulary of macros, idols, and the strivers curse used throughout this conversation.",
+    "url": "https://arthurbrooks.com/",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "August Krogh": {
+    "term": "August Krogh",
+    "category": "person",
+    "notes": "1920 Nobel laureate in Physiology; co-founder of Nordisk Insulinlaboratorium (predecessor to Novo Nordisk).",
+    "url": "https://en.wikipedia.org/wiki/August_Krogh",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "BlackRock": {
+    "term": "BlackRock",
+    "category": "organization",
+    "notes": "World's largest asset manager; Lenny associates it with brand drift (Vital Farms anecdote, unverified).",
+    "url": "https://www.blackrock.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Bob Moesta": {
+    "term": "Bob Moesta",
+    "category": "person",
+    "notes": "JTBD practitioner; cited as the practical voice on jobs-to-be-done.",
+    "url": "https://www.lennysnewsletter.com/p/the-ultimate-guide-to-jtbd-bob-moesta",
+    "confidence": "medium",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Bob Waldinger": {
+    "term": "Bob Waldinger",
+    "category": "person",
+    "notes": "Director of the Harvard Study of Adult Development (Grant Study); source for the seven habits of happy-and-healthy late life.",
+    "url": "https://www.adultdevelopmentstudy.org/",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Brahma Muhurta": {
+    "term": "Brahma Muhurta",
+    "category": "concept",
+    "notes": "An hour and 36 minutes before dawn — the 'Creator's time' in Vedic tradition. Brooks rises at 04:30 to train and pray inside this window.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Bret Taylor": {
+    "term": "Bret Taylor",
+    "category": "person",
+    "notes": "Sierra co-founder; quoted via his 'software is a garden, you need to tend to it' framing about SaaS maintenance.",
+    "url": "https://en.wikipedia.org/wiki/Bret_Taylor",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Bret Victor": {
+    "term": "Bret Victor",
+    "category": "person",
+    "notes": "Designer/researcher whose 'Stop Drawing Dead Fish' talk is the philosophical anchor for why Notion designers prototype in code, not Figma, for AI products.",
+    "url": "https://en.wikipedia.org/wiki/Bret_Victor",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Brian Chesky": {
+    "term": "Brian Chesky",
+    "category": "person",
+    "notes": "Airbnb co-founder; cited as another source for the 'world is made by people no smarter than you' idea.",
+    "url": "https://en.wikipedia.org/wiki/Brian_Chesky",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Brian Lovin": {
+    "term": "Brian Lovin",
+    "category": "person",
+    "notes": "Notion designer Schoening calls out as a top exemplar of agency — already blurs engineering and design, recruits actively.",
+    "url": "https://brianlovin.com",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Bruce Ames": {
+    "term": "Bruce Ames",
+    "category": "person",
+    "notes": "Patrick's late mentor; cited as the rare 'cheerleader' affect profile — relentlessly positive and successful.",
+    "url": "https://en.wikipedia.org/wiki/Bruce_Ames",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Build the Life You Want": {
+    "term": "Build the Life You Want",
+    "category": "book",
+    "notes": "Brooks and Oprah Winfrey's 2023 happiness manual on managing the three macronutrients.",
+    "url": "https://www.amazon.com/Build-Life-You-Want-Happier/dp/0593545400",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Carl Sagan": {
+    "term": "Carl Sagan",
+    "category": "person",
+    "notes": "Cited via Cosmos as the populariser of Paul MacLean's triune-brain model.",
+    "url": "https://en.wikipedia.org/wiki/Carl_Sagan",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Cat Wu": {
+    "term": "Cat Wu",
+    "category": "person",
+    "notes": "Head of product for Claude Code at Anthropic; mentioned for the Anthropic-runs-on-Slack anecdote.",
+    "url": "https://www.linkedin.com/in/cathleenwu",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Chris Berube": {
+    "term": "Chris Berube",
+    "category": "person",
+    "notes": "Producer for 99% Invisible; reported and co-hosts this segment.",
+    "url": "https://99percentinvisible.org/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Clayton Christensen": {
+    "term": "Clayton Christensen",
+    "category": "person",
+    "notes": "Harvard professor; originator of the jobs-to-be-done framework Schoening invokes around customer needs.",
+    "url": "https://en.wikipedia.org/wiki/Clayton_Christensen",
+    "confidence": "medium",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Cloudflare": {
+    "term": "Cloudflare",
+    "category": "organization",
+    "notes": "Network/security company; the episode treats it as a mission-emergence example for democratizing HTTPS.",
+    "url": "https://www.cloudflare.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "CoWoS": {
+    "term": "CoWoS",
+    "category": "concept",
+    "notes": "Advanced packaging capacity related to AI infrastructure constraints",
+    "url": "https://info.fusionww.com/blog/inside-the-ai-bottleneck-cowos-hbm-and-2-3nm-capacity-constraints-through-2027",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Code": {
+    "term": "Code",
+    "category": "book",
+    "notes": "Charles Petzold's 'Code: The Hidden Language of Computer Hardware and Software.' Schoening's recommendation for how computers actually work.",
+    "url": "https://www.amazon.com/Code-Language-Computer-Hardware-Software/dp/0137909101",
+    "confidence": "medium",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Coinbase": {
+    "term": "Coinbase",
+    "category": "company",
+    "notes": "Crypto company discussed as an index-like investment thesis example",
+    "url": "",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Conway's law": {
+    "term": "Conway's law",
+    "category": "concept",
+    "notes": "Melvin Conway's 1968 observation that software architecture mirrors the org chart of the team that built it.",
+    "url": "https://en.wikipedia.org/wiki/Conway%27s_law",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Cory Doctorow": {
+    "term": "Cory Doctorow",
+    "category": "person",
+    "notes": "Novelist, activist, journalist; coined 'enshittification' and authored the 2025 book of the same name.",
+    "url": "https://pluralistic.net/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Cosmos": {
+    "term": "Cosmos",
+    "category": "book",
+    "notes": "Carl Sagan's TV series and book; cited as the popular vehicle for the triune-brain framework.",
+    "url": "https://en.wikipedia.org/wiki/Cosmos:_A_Personal_Voyage",
+    "confidence": "medium",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Costco": {
+    "term": "Costco",
+    "category": "organization",
+    "notes": "Membership-warehouse retailer; Eric cites it as having a governance fortress that protects margin discipline.",
+    "url": "https://www.costco.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Creatine": {
+    "term": "Creatine",
+    "category": "health",
+    "notes": "Basic supplement discussed in the longevity segment",
+    "url": "",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Creatine monohydrate": {
+    "term": "Creatine monohydrate",
+    "category": "health",
+    "notes": "Brooks takes 10g/day; the second 5g is cited for emerging cognitive-benefit evidence.",
+    "url": "https://en.wikipedia.org/wiki/Creatine",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Cyberspace": {
+    "term": "Cyberspace",
+    "category": "concept",
+    "notes": "William Gibson's term, invoked here for the 'cyberspace is everything, turning inside out' image — digitization spreading from screens into physical goods.",
+    "url": "https://en.wikipedia.org/wiki/Cyberspace",
+    "confidence": "medium",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "DMCA Section 1201": {
+    "term": "DMCA Section 1201",
+    "category": "concept",
+    "notes": "1998 US law making it a federal felony to break digital locks; originally aimed at MP3 piracy, now used to block third-party device repair.",
+    "url": "https://www.copyright.gov/dmca/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Dan Gilbert": {
+    "term": "Dan Gilbert",
+    "category": "person",
+    "notes": "Harvard psychologist whose boredom experiments showed people will self-administer electric shocks rather than sit unstimulated.",
+    "url": "https://en.wikipedia.org/wiki/Daniel_Gilbert_(psychologist)",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Default mode network": {
+    "term": "Default mode network",
+    "category": "concept",
+    "notes": "The brain network active in mind-wandering and self-reflection; suppressed when scrolling and re-engaged when bored — Brooks's neuroscientific argument for protecting boredom.",
+    "url": "https://en.wikipedia.org/wiki/Default_mode_network",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Demos not memos": {
+    "term": "Demos not memos",
+    "category": "concept",
+    "notes": "The GitHub product-review mantra Schoening still applies: give people something to react to instead of writing a PRD.",
+    "url": "",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Derate": {
+    "term": "Derate",
+    "category": "concept",
+    "notes": "Tractor software intentionally reducing horsepower in response to a sensor or emissions fault; effectively a soft kill switch.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Dieter Rams": {
+    "term": "Dieter Rams",
+    "category": "person",
+    "notes": "Legendary industrial designer; the 'walking around a museum disapprovingly' video Schoening pinned to his X profile.",
+    "url": "https://en.wikipedia.org/wiki/Dieter_Rams",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Drive it like it's stolen": {
+    "term": "Drive it like it's stolen",
+    "category": "concept",
+    "notes": "Schoening's mantra to himself at Notion: act with founder-like urgency even though you didn't start the company.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Dropbox": {
+    "term": "Dropbox",
+    "category": "company",
+    "notes": "Cited for its menu-bar icon as a 'tiny core' example of a single small detail being the product's superpower.",
+    "url": "https://www.dropbox.com",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Elad Gil": {
+    "term": "Elad Gil",
+    "category": "person",
+    "notes": "Guest; investor, operator, author, CEO of Gil & Co",
+    "url": "https://eladgil.com/",
+    "confidence": "primary",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Enshittification": {
+    "term": "Enshittification",
+    "category": "concept",
+    "notes": "Cory Doctorow's three-stage platform-decay framework: serve users, lock them in, extract value.",
+    "url": "https://en.wikipedia.org/wiki/Enshittification",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Enshittification (book)": {
+    "term": "Enshittification (book)",
+    "category": "book",
+    "notes": "Cory Doctorow's 2025 book, 'Enshittification: Why Everything Suddenly Got Worse, And What to Do About It.'",
+    "url": "https://www.amazon.com/Enshittification-Everything-Suddenly-Worse-About/dp/0374619328",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Epson": {
+    "term": "Epson",
+    "category": "company",
+    "notes": "Named alongside HP as printer-ink lock-in example.",
+    "url": "https://www.epson.com/",
+    "confidence": "high",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Eric Liu": {
+    "term": "Eric Liu",
+    "category": "person",
+    "notes": "Notion PM Schoening cites as proof of agency-driven role evolution — moved from writing PRDs to building prototypes directly.",
+    "url": "https://www.linkedin.com/in/erictliu",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Eric Ries": {
+    "term": "Eric Ries",
+    "category": "person",
+    "notes": "Author of The Lean Startup (2011) and Incorruptible (2026). Founder of the Long-Term Stock Exchange.",
+    "url": "https://en.wikipedia.org/wiki/Eric_Ries",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "European Union": {
+    "term": "European Union",
+    "category": "organization",
+    "notes": "Passed a 2024 directive requiring member-state right-to-repair laws by summer 2026.",
+    "url": "https://commission.europa.eu/strategy-and-policy/policies/single-market/right-repair_en",
+    "confidence": "high",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Facebook": {
+    "term": "Facebook",
+    "category": "company",
+    "notes": "Worked example for the three-stage enshittification cycle.",
+    "url": "https://www.facebook.com/",
+    "confidence": "high",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Figma": {
+    "term": "Figma",
+    "category": "company",
+    "notes": "Design tool whose usage is splitting at Notion — some designers move to code prototypes, others lean in. Subject of the Jevons-paradox aside.",
+    "url": "https://www.figma.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency",
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "First 10% is free": {
+    "term": "First 10% is free",
+    "category": "concept",
+    "notes": "The new economics of building: the first 10% of any project takes almost no effort now, but the last 10% is still the 90% that matters.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Four idols": {
+    "term": "Four idols",
+    "category": "concept",
+    "notes": "Aquinas's worldly substitutes for transcendence — money, power, pleasure, fame. Brooks: everyone is beguiled by one; naming yours is the start of freedom from it.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Frank Gehry": {
+    "term": "Frank Gehry",
+    "category": "person",
+    "notes": "Cited as the kind of celebrated designer whose museum pieces Rams dismantles in the pinned video.",
+    "url": "https://en.wikipedia.org/wiki/Frank_Gehry",
+    "confidence": "medium",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Frederick Winslow Taylor": {
+    "term": "Frederick Winslow Taylor",
+    "category": "person",
+    "notes": "Author of The Principles of Scientific Management (1911); the Taylorism fad Eric contrasts with Follett.",
+    "url": "https://en.wikipedia.org/wiki/Frederick_Winslow_Taylor",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "From Strength to Strength": {
+    "term": "From Strength to Strength",
+    "category": "book",
+    "notes": "Brooks's 2022 book on designing the second half of life around four practices: jump, serve, worship, connect.",
+    "url": "https://www.amazon.com/Strength-Finding-Success-Happiness-Second/dp/059319148X",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "GPT-3": {
+    "term": "GPT-3",
+    "category": "concept",
+    "notes": "AI milestone discussed as a transformative signal",
+    "url": "https://en.wikipedia.org/wiki/GPT-3",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Gay Gordon-Byrne": {
+    "term": "Gay Gordon-Byrne",
+    "category": "person",
+    "notes": "Executive director of the Repair Association; right-to-repair advocate.",
+    "url": "https://www.repair.org/about-us",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Geoffrey Litt": {
+    "term": "Geoffrey Litt",
+    "category": "person",
+    "notes": "Ink & Switch researcher who works with Schoening on the malleable-software direction at Notion.",
+    "url": "https://www.geoffreylitt.com",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Gil & Co": {
+    "term": "Gil & Co",
+    "category": "organization",
+    "notes": "Elad Gil's multi-stage investment, holding, and operating company",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "GitHub": {
+    "term": "GitHub",
+    "category": "company",
+    "notes": "Where Schoening previously led design and where ~10% of pre-LLM contributions came from designers — the founding evidence for 'designers should code.'",
+    "url": "https://github.com",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Groupon": {
+    "term": "Groupon",
+    "category": "organization",
+    "notes": "Daily-deal company; Andrew Mason's cautionary tale of email-frequency erosion of a one-email-a-day promise.",
+    "url": "https://en.wikipedia.org/wiki/Groupon",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "HBM": {
+    "term": "HBM",
+    "category": "concept",
+    "notes": "High-bandwidth memory, part of the AI compute bottleneck discussion",
+    "url": "https://introl.com/blog/ai-memory-supercycle-hbm-2026",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "HP": {
+    "term": "HP",
+    "category": "company",
+    "notes": "Named alongside Epson as printer-ink lock-in example.",
+    "url": "https://www.hp.com/",
+    "confidence": "high",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Harvard Business School": {
+    "term": "Harvard Business School",
+    "category": "organization",
+    "notes": "Brooks teaches 'Leadership and Happiness' to MBA students; the four-idols exercise in this episode is from his classroom.",
+    "url": "https://www.hbs.edu/",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Harvard Study of Adult Development": {
+    "term": "Harvard Study of Adult Development",
+    "category": "organization",
+    "notes": "85-year longitudinal study (originally the Grant Study) that identified the seven habits predictive of happy, healthy old age.",
+    "url": "https://www.adultdevelopmentstudy.org/",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "HashiCorp": {
+    "term": "HashiCorp",
+    "category": "company",
+    "notes": "Acquisition example in market and infrastructure software discussion",
+    "url": "https://techcrunch.com/2024/04/24/ibm-moves-deeper-into-hybrid-cloud-management-with-6-4b-hashicorp-acquisition/",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Hedonic treadmill": {
+    "term": "Hedonic treadmill",
+    "category": "concept",
+    "notes": "The pattern where each achievement resets your baseline upward, so wanting always outruns having.",
+    "url": "https://en.wikipedia.org/wiki/Hedonic_treadmill",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Hemispheric lateralization": {
+    "term": "Hemispheric lateralization",
+    "category": "concept",
+    "notes": "McGilchrist's framing of the right hemisphere as 'why' (meaning, love, mystery) and the left as 'how' (technique, tasks). Modern digital life over-uses the left.",
+    "url": "https://channelmcgilchrist.com/",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Heroku": {
+    "term": "Heroku",
+    "category": "company",
+    "notes": "PaaS company where Schoening ran design; cited as the touchstone for 'developer experience as a product.'",
+    "url": "https://www.heroku.com",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "High Growth Handbook": {
+    "term": "High Growth Handbook",
+    "category": "book",
+    "notes": "Gil's book on scaling startups",
+    "url": "https://growth.eladgil.com/",
+    "confidence": "primary",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Iain McGilchrist": {
+    "term": "Iain McGilchrist",
+    "category": "person",
+    "notes": "Oxford psychiatrist whose hemispheric-lateralization work underwrites Brooks's claim that modern life is left-brain-only.",
+    "url": "https://channelmcgilchrist.com/",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Ibogaine": {
+    "term": "Ibogaine",
+    "category": "health",
+    "notes": "Psychoactive treatment discussed in the medicine segment",
+    "url": "https://en.wikipedia.org/wiki/Ibogaine",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Ikigai": {
+    "term": "Ikigai",
+    "category": "concept",
+    "notes": "Japanese concept of vocation at the intersection of love, skill, need, and pay; Schoening invokes it as the right way to choose what to build.",
+    "url": "https://en.wikipedia.org/wiki/Ikigai",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks",
+      "lenny-schoening-agency"
+    ]
+  },
+  "Incorruptible": {
+    "term": "Incorruptible",
+    "category": "book",
+    "notes": "Eric Ries's 2026 book on governance structures that protect mission-driven companies from financial gravity.",
+    "url": "https://www.incorruptible.co",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Industrial foundation": {
+    "term": "Industrial foundation",
+    "category": "concept",
+    "notes": "Corporate structure where a for-profit operating company is owned and governed by a nonprofit foundation; widespread in Denmark (Novo, Carlsberg) and Germany (Bosch, Zeiss).",
+    "url": "https://en.wikipedia.org/wiki/Industrial_foundation",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Ink & Switch": {
+    "term": "Ink & Switch",
+    "category": "company",
+    "notes": "Independent research lab whose malleable-software work Schoening leans on; Geoffrey Litt is there.",
+    "url": "https://www.inkandswitch.com",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Instacart": {
+    "term": "Instacart",
+    "category": "company",
+    "notes": "Company listed in Gil's investment/advisory background",
+    "url": "",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Interoperability": {
+    "term": "Interoperability",
+    "category": "concept",
+    "notes": "Whether two products can work together. Parts-pairing breaks interoperability by software fiat.",
+    "url": "https://en.wikipedia.org/wiki/Interoperability",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Ivan Illich": {
+    "term": "Ivan Illich",
+    "category": "person",
+    "notes": "Philosopher; Tools for Conviviality is the intellectual lineage Schoening draws on for malleable software.",
+    "url": "https://en.wikipedia.org/wiki/Ivan_Illich",
+    "confidence": "medium",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Ivan Zhao": {
+    "term": "Ivan Zhao",
+    "category": "person",
+    "notes": "Notion co-founder and CEO.",
+    "url": "https://www.linkedin.com/in/ivanhzhao",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Jailbreaking": {
+    "term": "Jailbreaking",
+    "category": "concept",
+    "notes": "Hacking around a device's software lock to install or run software the manufacturer doesn't permit.",
+    "url": "https://en.wikipedia.org/wiki/IOS_jailbreaking",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "James C. Scott": {
+    "term": "James C. Scott",
+    "category": "person",
+    "notes": "Anthropologist; Seeing Like a State is one of Schoening's recommended reads.",
+    "url": "https://en.wikipedia.org/wiki/James_C._Scott",
+    "confidence": "medium",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Jared Wilson": {
+    "term": "Jared Wilson",
+    "category": "person",
+    "notes": "Seventh-generation Missouri farmer; named plaintiff in the John Deere right-to-repair class action.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Jevons paradox": {
+    "term": "Jevons paradox",
+    "category": "concept",
+    "notes": "Increasing efficiency increases total usage; Schoening invokes it to predict Figma usage could rise alongside vibe coding, not fall.",
+    "url": "https://en.wikipedia.org/wiki/Jevons_paradox",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Jobs to be done": {
+    "term": "Jobs to be done",
+    "category": "concept",
+    "notes": "Clayton Christensen / Bob Moesta framework that Schoening uses as a sanity check on what customers actually want.",
+    "url": "https://en.wikipedia.org/wiki/Jobs_to_be_done",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "John Deere": {
+    "term": "John Deere",
+    "category": "company",
+    "notes": "Agricultural-equipment maker at the center of the tractor right-to-repair fight.",
+    "url": "https://www.deere.com/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Lenny Rachitsky": {
+    "term": "Lenny Rachitsky",
+    "category": "person",
+    "notes": "Host of Lenny's Podcast; former Airbnb PM and author of Lenny's Newsletter.",
+    "url": "https://www.lennysnewsletter.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible",
+      "lenny-schoening-agency"
+    ]
+  },
+  "Long-Term Benefit Trust": {
+    "term": "Long-Term Benefit Trust",
+    "category": "concept",
+    "notes": "Anthropic's governance instrument — an outside trust of AI-safety experts (without equity) that appoints a faction of the for-profit board.",
+    "url": "https://www.anthropic.com/news/the-long-term-benefit-trust",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Long-Term Stock Exchange": {
+    "term": "Long-Term Stock Exchange",
+    "category": "organization",
+    "notes": "SEC-registered stock exchange Eric founded; promotes long-term-focused listing standards.",
+    "url": "https://en.wikipedia.org/wiki/Long-Term_Stock_Exchange",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Malleable software": {
+    "term": "Malleable software",
+    "category": "concept",
+    "notes": "Software that works closer to the interest of its users than to the interest of the corporation that makes it. The opposite of the locked-down app model.",
+    "url": "https://www.inkandswitch.com/essay/malleable-software",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Marie Krogh": {
+    "term": "Marie Krogh",
+    "category": "person",
+    "notes": "Danish physiologist and diabetic; co-founder of the Novo Nordisk lineage. Her diabetes diagnosis drove the trip to Toronto to license insulin.",
+    "url": "https://en.wikipedia.org/wiki/Marie_Krogh",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Marshmallow test": {
+    "term": "Marshmallow test",
+    "category": "concept",
+    "notes": "Mischel's classic delayed-gratification study; Brooks uses it as a warning — strivers learn to defer marshmallows forever and never eat any.",
+    "url": "https://en.wikipedia.org/wiki/Stanford_marshmallow_experiment",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Martin Shkreli": {
+    "term": "Martin Shkreli",
+    "category": "person",
+    "notes": "Notorious for raising Daraprim price 5455%; Eric uses him as the archetype of pharmaceutical price-gouging the Kroghs feared.",
+    "url": "https://en.wikipedia.org/wiki/Martin_Shkreli",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Mary Parker Follett": {
+    "term": "Mary Parker Follett",
+    "category": "person",
+    "notes": "1920s management theorist; rediscovered by Peter Drucker. Eric closes the episode with her 'invisible leader' concept.",
+    "url": "https://en.wikipedia.org/wiki/Mary_Parker_Follett",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Max Schoening": {
+    "term": "Max Schoening",
+    "category": "person",
+    "notes": "Head of product at Notion. Previously a PM at Google, designer at Heroku, VP of Design and part-time engineer at GitHub under Nat Friedman, and a two-time founder.",
+    "url": "https://max.dev",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Mitchell Hashimoto": {
+    "term": "Mitchell Hashimoto",
+    "category": "person",
+    "notes": "HashiCorp co-founder; cited for the Ghostty terminal as exemplar of taste-driven engineering.",
+    "url": "https://x.com/mitchellh",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Mother Teresa": {
+    "term": "Mother Teresa",
+    "category": "person",
+    "notes": "Invoked via Malcolm Muggeridge as the modern exemplar of moral beauty.",
+    "url": "https://en.wikipedia.org/wiki/Mother_Teresa",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Notion": {
+    "term": "Notion",
+    "category": "company",
+    "notes": "Schoening's employer; the malleability-and-agency case study running through the conversation.",
+    "url": "https://www.notion.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Novo Nordisk": {
+    "term": "Novo Nordisk",
+    "category": "organization",
+    "notes": "Danish pharma giant; owned by Novo Nordisk Foundation (industrial-foundation structure). Founded 1922 as Nordisk Insulinlaboratorium by Marie & August Krogh.",
+    "url": "https://www.novonordisk.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "OpenAI": {
+    "term": "OpenAI",
+    "category": "company",
+    "notes": "Maker of Codex; representative of the labs-vs-real-users contrast Schoening draws.",
+    "url": "https://openai.com",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency",
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "PIRG": {
+    "term": "PIRG",
+    "category": "organization",
+    "notes": "Public Interest Research Group; estimated $3B in 2023 farm-equipment repair downtime.",
+    "url": "https://pirg.org/articles/tractor-right-repair-states-2023/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Parts pairing": {
+    "term": "Parts pairing",
+    "category": "concept",
+    "notes": "Manufacturer locks a device's software to only accept first-party replacement parts, even when a generic part is mechanically compatible.",
+    "url": "https://en.wikipedia.org/wiki/Parts_pairing",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Paul MacLean": {
+    "term": "Paul MacLean",
+    "category": "person",
+    "notes": "Neuroscientist; proposed the triune-brain framework Brooks uses to separate pleasure (limbic) from enjoyment (prefrontal).",
+    "url": "https://en.wikipedia.org/wiki/Paul_D._MacLean",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Philip Morris": {
+    "term": "Philip Morris",
+    "category": "organization",
+    "notes": "Tobacco giant; bought Vectura in 2021, denounced by British Thoracic Society.",
+    "url": "https://en.wikipedia.org/wiki/Philip_Morris_International",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Post-traumatic growth": {
+    "term": "Post-traumatic growth",
+    "category": "concept",
+    "notes": "Empirical finding that >90% of people who suffer real loss or trauma report growth on the other side — provided they lower their resistance to the pain.",
+    "url": "https://en.wikipedia.org/wiki/Post-traumatic_growth",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Public Benefit Corporation": {
+    "term": "Public Benefit Corporation",
+    "category": "concept",
+    "notes": "U.S. corporate form (especially in Delaware) requiring directors to balance profit with stated public benefits. Eric's two-page protective filing.",
+    "url": "https://en.wikipedia.org/wiki/Benefit_corporation",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Quibi": {
+    "term": "Quibi",
+    "category": "organization",
+    "notes": "Short-form video startup that famously failed; Eric uses it as an example of a 'Lean Startup is dead' backlash that didn't pan out.",
+    "url": "https://en.wikipedia.org/wiki/Quibi",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Rapamycin": {
+    "term": "Rapamycin",
+    "category": "health",
+    "notes": "Longevity intervention discussed with caution",
+    "url": "https://en.wikipedia.org/wiki/Sirolimus",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Repair Association": {
+    "term": "Repair Association",
+    "category": "organization",
+    "notes": "Industry-and-advocacy group led by Gay Gordon-Byrne pushing right-to-repair legislation.",
+    "url": "https://www.repair.org/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Reverse bucket list": {
+    "term": "Reverse bucket list",
+    "category": "concept",
+    "notes": "Write down your worldly attachments and cross them out — 'easy come, easy go' — to disarm the wants that drive the hedonic treadmill.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Rhonda Patrick": {
+    "term": "Rhonda Patrick",
+    "category": "person",
+    "notes": "Host of FoundMyFitness; biomedical scientist focused on aging, nutrition, and longevity.",
+    "url": "https://www.foundmyfitness.com/",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Right to repair": {
+    "term": "Right to repair",
+    "category": "concept",
+    "notes": "The movement (and growing body of US state and EU law) requiring manufacturers to enable owner and third-party repair.",
+    "url": "https://en.wikipedia.org/wiki/Right_to_repair",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Roman Mars": {
+    "term": "Roman Mars",
+    "category": "person",
+    "notes": "Host of 99% Invisible.",
+    "url": "https://99percentinvisible.org/",
+    "confidence": "primary",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "SSRIs": {
+    "term": "SSRIs",
+    "category": "health",
+    "notes": "Selective serotonin reuptake inhibitors; effective at reducing ventrolateral-prefrontal-cortex rumination but most useful when paired with cognitive-behavioral practice.",
+    "url": "https://en.wikipedia.org/wiki/Selective_serotonin_reuptake_inhibitor",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "SaaSpocalypse": {
+    "term": "SaaSpocalypse",
+    "category": "concept",
+    "notes": "The argument that AI will collapse the SaaS industry as users build their own tools. Schoening's take: greatly exaggerated — people still want maintenance and specialists.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Seeing Like a State": {
+    "term": "Seeing Like a State",
+    "category": "book",
+    "notes": "James C. Scott. Schoening's other recommended read on what gets lost when we standardize and centralize.",
+    "url": "https://www.amazon.com/Seeing-Like-State-Condition-Paperbacks/dp/0300246757",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Shareholder primacy": {
+    "term": "Shareholder primacy",
+    "category": "concept",
+    "notes": "Doctrine (popularized post-1970 by Milton Friedman) that boards' fiduciary duty is to maximize shareholder returns; Eric calls this a recent 40-year-old invention sold as natural law.",
+    "url": "https://en.wikipedia.org/wiki/Shareholder_primacy",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Simon Baron-Cohen": {
+    "term": "Simon Baron-Cohen",
+    "category": "person",
+    "notes": "Cambridge psychologist on autism and hemispheric lateralization; cited for the developmental side of right- vs left-brain dominance.",
+    "url": "https://en.wikipedia.org/wiki/Simon_Baron-Cohen",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Simon Last": {
+    "term": "Simon Last",
+    "category": "person",
+    "notes": "Notion engineer whose maxim 'every manual intervention in agent-written code is a bug' Schoening cites as the engineering bar.",
+    "url": "https://x.com/simonlast",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "SpaceX": {
+    "term": "SpaceX",
+    "category": "company",
+    "notes": "Hard-tech example used in market-entry and disruption discussion",
+    "url": "https://techcrunch.com/2026/04/21/spacex-is-working-with-cursor-and-has-an-option-to-buy-the-startup-for-60-billion/",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Stripe": {
+    "term": "Stripe",
+    "category": "company",
+    "notes": "Payments company discussed as a growth and venture example",
+    "url": "",
+    "confidence": "context",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Striver's curse": {
+    "term": "Striver's curse",
+    "category": "concept",
+    "notes": "Brooks's term for working toward a goal because the limbic system lies that arrival will feel permanent — then the dopamine drop when you arrive sends you chasing the next thing.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "The Good Life": {
+    "term": "The Good Life",
+    "category": "book",
+    "notes": "Bob Waldinger's book summarising the Harvard Grant Study findings on the predictors of happy old age.",
+    "url": "https://www.robertwaldinger.com/the-book",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "The Lean Startup": {
+    "term": "The Lean Startup",
+    "category": "book",
+    "notes": "Eric Ries's foundational 2011 book on MVPs, build-measure-learn, and validated learning.",
+    "url": "https://en.wikipedia.org/wiki/The_Lean_Startup",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "The Meaning of Your Life": {
+    "term": "The Meaning of Your Life",
+    "category": "book",
+    "notes": "Brooks's 2026 book on the modern meaning crisis and the neuroscience of finding purpose.",
+    "url": "https://arthurbrooks.com/books",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Thomas Aquinas": {
+    "term": "Thomas Aquinas",
+    "category": "person",
+    "notes": "Catholic theologian; identified the four worldly idols Brooks uses with his MBA students.",
+    "url": "https://en.wikipedia.org/wiki/Thomas_Aquinas",
+    "confidence": "high",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Three macronutrients of happiness": {
+    "term": "Three macronutrients of happiness",
+    "category": "concept",
+    "notes": "Enjoyment, satisfaction, and meaning. The central framing of the episode; you need all three in balance, like protein, carbs, and fat.",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Tim Cook": {
+    "term": "Tim Cook",
+    "category": "person",
+    "notes": "Apple CEO, quoted from his 2019 investor letter warning that repair (rather than replacement) is Apple's biggest revenue risk.",
+    "url": "https://www.apple.com/leadership/tim-cook/",
+    "confidence": "high",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "Tim Ferriss": {
+    "term": "Tim Ferriss",
+    "category": "person",
+    "notes": "Host of The Tim Ferriss Show",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "tim-ferriss-863-elad-gil"
+    ]
+  },
+  "Tiny core": {
+    "term": "Tiny core",
+    "category": "concept",
+    "notes": "Schoening's framing: every great product has one tiny detail that is the superpower (iPhone multitouch, GitHub pull request, Notion blocks, Dropbox menu-bar icon).",
+    "url": "",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Tools for Conviviality": {
+    "term": "Tools for Conviviality",
+    "category": "book",
+    "notes": "Ivan Illich, 1973. The philosophical case for tools that users can shape themselves — Schoening's recommended read on malleable software.",
+    "url": "https://www.amazon.com/Tools-Conviviality-Ivan-Illich/dp/1842300113",
+    "confidence": "high",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Triune brain": {
+    "term": "Triune brain",
+    "category": "concept",
+    "notes": "MacLean's three-layer model (reptilian / limbic / prefrontal). Brooks uses it to argue pleasure is limbic and enjoyment is prefrontal.",
+    "url": "https://en.wikipedia.org/wiki/Triune_brain",
+    "confidence": "primary",
+    "seen_in": [
+      "foundmyfitness-110-arthur-brooks"
+    ]
+  },
+  "Tyler Cowen": {
+    "term": "Tyler Cowen",
+    "category": "person",
+    "notes": "Economist; Marginal Revolution; cited for the idea that society is not capped by intelligence.",
+    "url": "https://marginalrevolution.com",
+    "confidence": "medium",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Vanta": {
+    "term": "Vanta",
+    "category": "organization",
+    "notes": "Sponsor of this episode; SOC 2 / compliance automation.",
+    "url": "https://www.vanta.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Vectura Group": {
+    "term": "Vectura Group",
+    "category": "organization",
+    "notes": "UK inhaler-therapeutics company (asthma/COPD), University of Bath spin-out. Acquired by Philip Morris in 2021 for £1.1bn over board objections — the cautionary tale.",
+    "url": "https://en.wikipedia.org/wiki/Vectura",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Vibe coding": {
+    "term": "Vibe coding",
+    "category": "concept",
+    "notes": "Building software conversationally with LLMs without traditional engineering rigor. Schoening: the amount of software has gone up; the quality has not.",
+    "url": "https://en.wikipedia.org/wiki/Vibe_coding",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-schoening-agency"
+    ]
+  },
+  "Vital Farms": {
+    "term": "Vital Farms",
+    "category": "organization",
+    "notes": "Pasture-raised egg brand; Lenny's example of perceived quality erosion under new ownership (anecdotal).",
+    "url": "https://vitalfarms.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Whole Foods": {
+    "term": "Whole Foods",
+    "category": "organization",
+    "notes": "Natural-foods grocer acquired by Amazon; recurring example of post-acquisition mission drift.",
+    "url": "http://wholefoodsmarket.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "William Gibson": {
+    "term": "William Gibson",
+    "category": "person",
+    "notes": "Cited for coining 'cyberspace' and the line 'cyberspace is everything, so turning inside out.'",
+    "url": "https://en.wikipedia.org/wiki/William_Gibson",
+    "confidence": "high",
+    "seen_in": [
+      "99pi-666-enshittification"
+    ]
+  },
+  "WorkOS": {
+    "term": "WorkOS",
+    "category": "organization",
+    "notes": "Sponsor of this episode; enterprise-readiness APIs (SSO, SCIM, RBAC).",
+    "url": "https://workos.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  },
+  "Zeiss": {
+    "term": "Zeiss",
+    "category": "organization",
+    "notes": "German optics company; one of the oldest industrial-foundation companies, structured in 1885 by Ernst Abbe under the Carl Zeiss Stiftung.",
+    "url": "https://www.zeiss.com",
+    "confidence": "primary",
+    "seen_in": [
+      "lenny-ries-incorruptible"
+    ]
+  }
+}

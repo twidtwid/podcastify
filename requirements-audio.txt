@@ -1,0 +1,38 @@
+# Optional dependencies — only needed if you want to transcribe + diarize
+# from raw audio. The core podcast-transformer pipeline runs on stdlib only;
+# you can use it today by supplying a transcript at
+# source/user-provided-transcript.txt and passing --skip-fetch.
+#
+# Install with: pip install -r requirements-audio.txt
+# (Apple Silicon recommended — mlx-whisper is GPU-accelerated there.)
+#
+# Also requires: ffmpeg on PATH (`brew install ffmpeg`).
+
+# Local transcription via mlx-whisper (Apple Silicon).
+# For other platforms, swap for `openai-whisper` (slower on CPU, no GPU req).
+mlx-whisper
+
+# Speaker diarization via pyannote.audio.
+# Version pins reconcile the torchaudio + huggingface_hub API skew —
+# pyannote 3.3.2 calls APIs that newer versions of those libraries
+# removed. Don't bump these without re-testing.
+pyannote.audio==3.3.2
+torch<2.4
+torchaudio<2.4
+huggingface_hub<0.26
+matplotlib
+
+# Pyannote's speaker-diarization-3.1 pipeline is gated. Before running:
+#   1. Accept terms at https://huggingface.co/pyannote/speaker-diarization-3.1
+#   2. Accept terms at https://huggingface.co/pyannote/segmentation-3.0
+#   3. Create a read-only token at https://huggingface.co/settings/tokens
+#   4. Export it: `export HF_TOKEN=hf_...`
+#
+# A note on the newer pyannote/speaker-diarization-community-1 pipeline:
+# It produces meaningfully better attribution on similar-voice shows (e.g.
+# three American adult males on a single mic), but requires pyannote.audio
+# 3.5+ which depends on `torchcodec`. Torchcodec links against system ffmpeg
+# at hard-coded prefixes like /opt/homebrew/opt/ffmpeg/. If your ffmpeg
+# lives elsewhere (custom Homebrew prefix, ~/.local, etc.), 3.5 won't load.
+# Stick with 3.3.2 unless you're on a clean Homebrew install and willing to
+# bump the pinned deps above.
