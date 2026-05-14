@@ -153,6 +153,72 @@ class UrlIngestHtmlUtilityTests(unittest.TestCase):
         text = self.url_ingest.html_to_text("<h2>Transcript</h2><p>HOST:&nbsp;Hello</p><p>GUEST: Hi</p>")
         self.assertIn("Transcript\nHOST: Hello\nGUEST: Hi", text)
 
+    def test_dialog_start_handles_alternating_two_speaker_transcript(self) -> None:
+        text = "\n".join(
+            [
+                "Navigation",
+                "Subscribe",
+                "Host: Welcome to the show.",
+                "Guest: Thanks for having me.",
+                "Host: Let's start with the big idea.",
+                "Guest: The big idea is resilience.",
+            ]
+        )
+        transcript = self.url_ingest.text_or_html_to_transcript(text)
+        self.assertEqual(
+            transcript,
+            "\n".join(
+                [
+                    "Host: Welcome to the show.",
+                    "Guest: Thanks for having me.",
+                    "Host: Let's start with the big idea.",
+                    "Guest: The big idea is resilience.",
+                ]
+            )
+            + "\n",
+        )
+
+    def test_dialog_start_handles_diarization_speaker_labels(self) -> None:
+        text = "\n".join(
+            [
+                "Navigation",
+                "SPEAKER_01: Welcome to the show.",
+                "SPEAKER_02: Thanks for having me.",
+                "SPEAKER_01: Let's begin.",
+                "SPEAKER_02: Sounds good.",
+            ]
+        )
+        transcript = self.url_ingest.text_or_html_to_transcript(text)
+        self.assertTrue(transcript.startswith("SPEAKER_01: Welcome"))
+        self.assertNotIn("Navigation", transcript)
+
+    def test_dialog_start_rejects_one_off_reference_titles(self) -> None:
+        lines = [
+            "Transcription",
+            "Just Think: The Challenges Of The Disengaged Mind",
+            "TARGET ARTICLE: Posttraumatic Growth and Adversity",
+            "Rhonda Patrick: Hi, everyone. I'm here with Dr. Arthur Brooks.",
+            "Arthur Brooks: It's great to be here.",
+            "Rhonda Patrick: Let's talk about happiness.",
+            "Arthur Brooks: Happiness is not a feeling.",
+        ]
+        transcript = self.url_ingest.extract_transcript_section("\n".join(lines))
+        self.assertTrue(transcript.startswith("Rhonda Patrick: Hi, everyone."))
+        self.assertNotIn("Just Think", transcript)
+        self.assertNotIn("TARGET ARTICLE", transcript)
+
+    def test_inline_timestamp_markers_are_stripped_from_transcript_lines(self) -> None:
+        text = "\n".join(
+            [
+                "HOST: This is the opening thought [00:11:00] continuing mid-sentence.",
+                "GUEST: Another response.",
+                "HOST: Back to the host.",
+            ]
+        )
+        transcript = self.url_ingest.text_or_html_to_transcript(text)
+        self.assertNotIn("[00:11:00]", transcript)
+        self.assertIn("opening thought continuing mid-sentence", transcript)
+
     def test_extract_chapters_finds_common_timestamp_lines(self) -> None:
         text = "00:00 Intro\n12:34 Building durable teams\n1:02:03 Closing thoughts"
         self.assertEqual(
@@ -302,6 +368,10 @@ class UrlIngestSubstackProviderTests(unittest.TestCase):
         provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
         self.assertEqual(provenance["provider_id"], "lenny_substack")
         self.assertEqual(provenance["chapters"][1], {"time": "06:45", "title": "Long-term company building"})
+        turns = json.loads((episode_dir / "source" / "transcript.turns.json").read_text(encoding="utf-8"))
+        self.assertEqual(turns[0]["speaker"], "Lenny Rachitsky")
+        self.assertEqual(turns[1]["speaker"], "Eric Ries")
+        self.assertGreater(turns[1]["word_count"], 0)
 
     def test_substack_duration_seconds_from_segment_list(self) -> None:
         # Real transcription.json is a flat list of {start, end, text, ...}
@@ -320,6 +390,26 @@ class UrlIngestSubstackProviderTests(unittest.TestCase):
     def test_substack_duration_seconds_handles_missing_payload(self) -> None:
         self.assertEqual(self.url_ingest._substack_duration_seconds([]), 0)
         self.assertEqual(self.url_ingest._substack_duration_seconds(None), 0)
+
+    def test_substack_json_to_turns_merges_consecutive_same_speaker_segments(self) -> None:
+        payload = [
+            {"speaker": "SPEAKER_0", "start": 0, "end": 2, "text": "First sentence."},
+            {"speaker": "SPEAKER_0", "start": 2, "end": 4, "text": "Second sentence."},
+            {"speaker": "SPEAKER_1", "start": 4, "end": 6, "text": "Reply."},
+        ]
+        turns = self.url_ingest.substack_json_to_turns(
+            payload,
+            {"SPEAKER_0": "Eric Ries", "SPEAKER_1": "Lenny Rachitsky"},
+        )
+        self.assertEqual(
+            [(t["speaker"], t["text"]) for t in turns],
+            [
+                ("Eric Ries", "First sentence. Second sentence."),
+                ("Lenny Rachitsky", "Reply."),
+            ],
+        )
+        self.assertEqual(turns[0]["start"], 0)
+        self.assertEqual(turns[0]["end"], 4)
 
     def test_useful_links_now_keeps_entity_links(self) -> None:
         # Pre-fix behavior dropped everything except Apple/Spotify/YouTube and

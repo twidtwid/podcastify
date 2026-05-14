@@ -25,6 +25,26 @@ def load_podcast_build():
 
 
 class SpeakerVisibilityTests(unittest.TestCase):
+    def _write_minimal_sidecar(self, ep: Path) -> None:
+        (ep / "source").mkdir(parents=True, exist_ok=True)
+        (ep / "final").mkdir(parents=True, exist_ok=True)
+        (ep / "source" / "episode.notes.json").write_text("{}\n", encoding="utf-8")
+        sidecar = {
+            "episode": {
+                "title": "How to build a company",
+                "podcast_title": "Lenny's Podcast",
+                "hosts": ["Lenny Rachitsky"],
+                "guests": ["Eric Ries"],
+                "duration_seconds": 300,
+                "chapters": [],
+            },
+            "verification": {"terminology": []},
+        }
+        (ep / "final" / "metadata.sidecar.json").write_text(
+            json.dumps(sidecar),
+            encoding="utf-8",
+        )
+
     def test_package_marks_speaker_label_only_on_speaker_change(self) -> None:
         podcast_build = load_podcast_build()
         transcript = (
@@ -36,26 +56,9 @@ class SpeakerVisibilityTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             ep = Path(tmp)
-            (ep / "source").mkdir(parents=True)
-            (ep / "final").mkdir(parents=True)
+            self._write_minimal_sidecar(ep)
             (ep / "source" / "user-provided-transcript.txt").write_text(
                 transcript,
-                encoding="utf-8",
-            )
-            (ep / "source" / "episode.notes.json").write_text("{}\n", encoding="utf-8")
-            sidecar = {
-                "episode": {
-                    "title": "How to build a company",
-                    "podcast_title": "Lenny's Podcast",
-                    "hosts": ["Lenny Rachitsky"],
-                    "guests": ["Eric Ries"],
-                    "duration_seconds": 300,
-                    "chapters": [],
-                },
-                "verification": {"terminology": []},
-            }
-            (ep / "final" / "metadata.sidecar.json").write_text(
-                json.dumps(sidecar),
                 encoding="utf-8",
             )
 
@@ -69,6 +72,37 @@ class SpeakerVisibilityTests(unittest.TestCase):
                 ("Eric Ries", True),
                 ("Eric Ries", False),
                 ("Lenny Rachitsky", True),
+            ],
+        )
+
+    def test_package_prefers_structured_turns_over_text_regex_parsing(self) -> None:
+        podcast_build = load_podcast_build()
+        with tempfile.TemporaryDirectory() as tmp:
+            ep = Path(tmp)
+            self._write_minimal_sidecar(ep)
+            (ep / "source" / "user-provided-transcript.txt").write_text(
+                "Reference Title: This line looks like a speaker but is not dialogue.\n"
+                "Lenny Rachitsky: Text fallback should not be used.\n",
+                encoding="utf-8",
+            )
+            (ep / "source" / "transcript.turns.json").write_text(
+                json.dumps(
+                    [
+                        {"speaker": "Lenny Rachitsky", "text": "Eric, welcome."},
+                        {"speaker": "Eric Ries", "text": "Thanks for having me."},
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            package = podcast_build.build_package(ep)
+
+        self.assertEqual(
+            [(t["speaker"], t["text"]) for t in package["turns"]],
+            [
+                ("Lenny Rachitsky", "Eric, welcome."),
+                ("Eric Ries", "Thanks for having me."),
             ],
         )
 

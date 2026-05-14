@@ -78,6 +78,7 @@ class SourceBundle:
     slug: str
     title: str = ""
     transcript_text: str = ""
+    transcript_turns: list[dict[str, Any]] = field(default_factory=list)
     transcript_source_url: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     chapters: list[dict[str, str]] = field(default_factory=list)
@@ -266,7 +267,7 @@ _TRANSCRIPT_LEADING_CHROME_MARKERS = (
 # Elad Gil, Consigliere..." that share the colon shape but have more
 # than 4 capitalized tokens before the colon.
 _TRANSCRIPT_SPEAKER_LINE_RE = re.compile(
-    r"^[A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]+){0,3}:\s+\S",
+    r"^((?:SPEAKER[_ -]?\d{1,3}|[A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]+){0,4})):\s+\S",
 )
 # A speaker-looking line whose colon-prefix is actually a publisher metadata
 # label, not a speaker. tim.blog renders "Topics: The Tim Ferriss Show
@@ -289,11 +290,18 @@ _TRANSCRIPT_METADATA_PREFIXES = frozenset({
 })
 
 
+def _speaker_prefix(line: str) -> str | None:
+    match = _TRANSCRIPT_SPEAKER_LINE_RE.match(line)
+    if not match:
+        return None
+    prefix = match.group(1).strip()
+    if prefix.lower() in _TRANSCRIPT_METADATA_PREFIXES:
+        return None
+    return prefix
+
+
 def _is_real_speaker_line(line: str) -> bool:
-    if not _TRANSCRIPT_SPEAKER_LINE_RE.match(line):
-        return False
-    prefix = line.split(":", 1)[0].strip().lower()
-    return prefix not in _TRANSCRIPT_METADATA_PREFIXES
+    return _speaker_prefix(line) is not None
 
 
 def _find_dialog_start(lines: list[str]) -> int | None:
@@ -303,22 +311,22 @@ def _find_dialog_start(lines: list[str]) -> int | None:
     titles ("Just Think: The Challenges Of The Disengaged Mind") and
     publisher headlines ("TARGET ARTICLE: ...") match the same shape but
     are one-off references buried in show-notes citations on the
-    FoundMyFitness page. Real dialog has the SAME speaker reappear within a
-    short window. Require the candidate line's colon-prefix to repeat at
-    least twice in the next 50 lines.
+    FoundMyFitness page. Real dialog has a cluster of speaker turns, and the
+    candidate speaker normally comes back shortly after the first line.
     """
     for i, line in enumerate(lines):
-        if not _is_real_speaker_line(line):
+        prefix = _speaker_prefix(line)
+        if not prefix:
             continue
-        prefix = line.split(":", 1)[0].strip().lower()
-        same_prefix = 0
+        speakers = [prefix.lower()]
         for follow in lines[i + 1 : i + 51]:
-            if not _is_real_speaker_line(follow):
-                continue
-            if follow.split(":", 1)[0].strip().lower() == prefix:
-                same_prefix += 1
-                if same_prefix >= 2:
-                    return i
+            follow_prefix = _speaker_prefix(follow)
+            if follow_prefix:
+                speakers.append(follow_prefix.lower())
+        if len(speakers) < 3:
+            continue
+        if speakers.count(prefix.lower()) >= 2:
+            return i
     return None
 
 
@@ -642,8 +650,12 @@ def _segment_speaker(segment: dict[str, Any]) -> str:
     return "SPEAKER"
 
 
-def substack_json_to_transcript(data: Any, speaker_map: dict[str, str]) -> str:
-    """Render a Substack transcription.json into `Speaker: text` lines.
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b[\w'-]+\b", text))
+
+
+def substack_json_to_turns(data: Any, speaker_map: dict[str, str]) -> list[dict[str, Any]]:
+    """Render a Substack transcription.json into structured speaker turns.
 
     Merges consecutive same-speaker segments into a single turn. The raw
     payload chunks a single speaker's monologue across dozens of ~3-second
@@ -655,7 +667,7 @@ def substack_json_to_transcript(data: Any, speaker_map: dict[str, str]) -> str:
     raw_segments = data
     if isinstance(data, dict):
         raw_segments = data.get("segments") or data.get("transcript") or []
-    turns: list[tuple[str, list[str]]] = []
+    turns: list[dict[str, Any]] = []
     for segment in raw_segments:
         if not isinstance(segment, dict):
             continue
@@ -664,13 +676,28 @@ def substack_json_to_transcript(data: Any, speaker_map: dict[str, str]) -> str:
         text = clean_text(str(segment.get("text") or ""))
         if not text:
             continue
-        if turns and turns[-1][0] == speaker:
-            turns[-1][1].append(text)
+        if turns and turns[-1]["speaker"] == speaker:
+            turns[-1]["text"] = f"{turns[-1]['text']} {text}".strip()
+            if segment.get("end") is not None:
+                turns[-1]["end"] = segment.get("end")
         else:
-            turns.append((speaker, [text]))
+            turn: dict[str, Any] = {"speaker": speaker, "text": text}
+            if segment.get("start") is not None:
+                turn["start"] = segment.get("start")
+            if segment.get("end") is not None:
+                turn["end"] = segment.get("end")
+            turns.append(turn)
     if not turns:
         raise UrlIngestError("Substack transcription JSON contained no transcript segments")
-    lines = [f"{speaker}: {' '.join(chunks).strip()}" for speaker, chunks in turns]
+    for turn in turns:
+        turn["word_count"] = _word_count(turn.get("text", ""))
+    return turns
+
+
+def substack_json_to_transcript(data: Any, speaker_map: dict[str, str]) -> str:
+    """Render a Substack transcription.json into `Speaker: text` lines."""
+    turns = substack_json_to_turns(data, speaker_map)
+    lines = [f"{turn['speaker']}: {turn['text']}" for turn in turns]
     return "\n".join(lines) + "\n"
 
 
@@ -692,6 +719,7 @@ def ingest_substack(
     title = strip_title_suffix(extract_title(page_html), provider)
     links = extract_links(page_html, url)
     speaker_map = extract_substack_speaker_map(page_html)
+    transcript_turns = substack_json_to_turns(transcript_json, speaker_map)
     page_metadata = metadata_from_page(page_html)
     # Substack transcription.json is a flat list of {start, end, text, ...}
     # segments — the wall-clock duration is the last segment's `end`. Surface
@@ -710,7 +738,8 @@ def ingest_substack(
         canonical_url=url,
         slug=slug or slugify(title or provider["id"]),
         title=title,
-        transcript_text=substack_json_to_transcript(transcript_json, speaker_map),
+        transcript_text="\n".join(f"{turn['speaker']}: {turn['text']}" for turn in transcript_turns) + "\n",
+        transcript_turns=transcript_turns,
         transcript_source_url=transcript_url,
         metadata=page_metadata,
         chapters=extract_chapters(html_to_text(page_html)),
@@ -877,11 +906,17 @@ def write_bundle(bundle: SourceBundle, out_root: Path) -> Path:
             bundle.transcript_text,
             encoding="utf-8",
         )
+    if bundle.transcript_turns:
+        (source_dir / "transcript.turns.json").write_text(
+            json.dumps(bundle.transcript_turns, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
     provenance = {
         "provider_id": bundle.provider_id,
         "input_url": bundle.input_url,
         "canonical_url": bundle.canonical_url,
         "transcript_path": "source/user-provided-transcript.txt" if bundle.transcript_text else "",
+        "transcript_turns_path": "source/transcript.turns.json" if bundle.transcript_turns else "",
         "transcript_source_url": bundle.transcript_source_url,
         "metadata": bundle.metadata,
         "chapters": bundle.chapters,

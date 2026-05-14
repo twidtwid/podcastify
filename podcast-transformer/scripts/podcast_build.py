@@ -105,6 +105,42 @@ def parse_speaker_turns(text: str) -> list[dict[str, Any]]:
     return turns
 
 
+def resolve_structured_turns_path(episode_dir: Path, transcript_path: Path) -> Path | None:
+    candidates = [
+        transcript_path.with_suffix(".turns.json"),
+        transcript_path.parent / "transcript.turns.json",
+        episode_dir / "source" / "transcript.turns.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def read_structured_turns(path: Path) -> list[dict[str, Any]]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(raw, dict):
+        raw = raw.get("turns") or []
+    if not isinstance(raw, list):
+        return []
+    turns: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        speaker = normalize_space(str(item.get("speaker") or ""))
+        text = normalize_space(str(item.get("text") or ""))
+        if not speaker or not text:
+            continue
+        turn = dict(item)
+        turn["speaker"] = speaker
+        turn["text"] = text
+        turns.append(turn)
+    for i, turn in enumerate(turns):
+        turn["id"] = f"t{i}"
+        turn["word_count"] = int(turn.get("word_count") or word_count(turn["text"]))
+    return turns
+
+
 def annotate_speaker_visibility(turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Mark speaker labels for display only when the speaker changes."""
     previous = None
@@ -232,7 +268,11 @@ def build_package(episode_dir: Path) -> dict[str, Any]:
     notes_path = episode_dir / "source" / "episode.notes.json"
     notes = read_json(notes_path) if notes_path.exists() else {}
     transcript_path = resolve_transcript_path(episode_dir, sidecar)
-    turns = annotate_speaker_visibility(parse_speaker_turns(transcript_path.read_text(encoding="utf-8")))
+    structured_turns_path = resolve_structured_turns_path(episode_dir, transcript_path)
+    turns = read_structured_turns(structured_turns_path) if structured_turns_path else []
+    if not turns:
+        turns = parse_speaker_turns(transcript_path.read_text(encoding="utf-8"))
+    turns = annotate_speaker_visibility(turns)
     chapters = build_chapters(sidecar, notes, turns)
     keywords = build_keywords(notes, chapters, turns)
     terms = sidecar.get("verification", {}).get("terminology", [])
