@@ -71,5 +71,48 @@ class DraftThinnessCheckTests(unittest.TestCase):
         self.assertTrue(n_takeaways >= 6 and n_claims >= 6)
 
 
+class KeywordQueriesRepairTests(unittest.TestCase):
+    """gemma4 occasionally emits `keyword_queries: { "a", "b", "c" }` —
+    object delimiters around what was meant to be a list of bare strings.
+    json.loads fails with `Expecting ':' delimiter` and the whole draft is
+    lost. Recover by promoting each bare string to a `"str": "str"` pair so
+    downstream code that iterates `.items()` still works."""
+
+    def test_keyword_queries_bare_strings_in_object_braces_recovers(self) -> None:
+        draft_notes = load_draft_notes()
+        raw = (
+            '{\n'
+            '  "bottom_line": "...",\n'
+            '  "takeaways": ["t1", "t2"],\n'
+            '  "claims": [],\n'
+            '  "links": [],\n'
+            '  "keyword_queries": {\n'
+            '    "OpenAI governance structure",\n'
+            '    "Sam Altman shift from alignment",\n'
+            '    "The Blip internal investigation"\n'
+            '  }\n'
+            '}'
+        )
+        parsed = draft_notes.extract_json(raw)
+        self.assertIn("keyword_queries", parsed)
+        self.assertIsInstance(parsed["keyword_queries"], dict)
+        self.assertIn("OpenAI governance structure", parsed["keyword_queries"])
+        self.assertEqual(
+            parsed["keyword_queries"]["OpenAI governance structure"],
+            "OpenAI governance structure",
+        )
+
+    def test_well_formed_keyword_queries_pass_through_unchanged(self) -> None:
+        draft_notes = load_draft_notes()
+        raw = json.dumps({
+            "bottom_line": "...",
+            "takeaways": [],
+            "claims": [],
+            "keyword_queries": {"shortLabel": "the substring"},
+        })
+        parsed = draft_notes.extract_json(raw)
+        self.assertEqual(parsed["keyword_queries"], {"shortLabel": "the substring"})
+
+
 if __name__ == "__main__":
     unittest.main()

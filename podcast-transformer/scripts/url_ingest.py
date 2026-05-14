@@ -330,6 +330,40 @@ def _find_dialog_start(lines: list[str]) -> int | None:
     return None
 
 
+def _real_speaker_prefixes(lines: list[str], min_recurrence: int = 3) -> set[str]:
+    """Speaker prefixes that recur often enough to be real dialog speakers.
+
+    The page chrome that sneaks past the start-of-dialog detector still
+    matches the `Speaker: text` shape: tim.blog's "LEGAL CONDITIONS:" and
+    "Comment Rules:" lines, 99pi's "Florence Nightingale: Data Viz Pioneer
+    Episode 433" related-episode rows. The 99pi sidebar renders each
+    related-episode title twice (heading + "Play Pause Add to Queue"
+    row), so a min_recurrence of 2 isn't enough — real interview speakers
+    routinely recur a dozen+ times, so 3 is a safe floor.
+    """
+    counts: dict[str, int] = {}
+    for line in lines:
+        prefix = _speaker_prefix(line)
+        if prefix:
+            counts[prefix.lower()] = counts.get(prefix.lower(), 0) + 1
+    return {prefix for prefix, count in counts.items() if count >= min_recurrence}
+
+
+def _find_dialog_end(lines: list[str], real_speakers: set[str]) -> int | None:
+    """Return the slice index after the last real-speaker line, or None.
+
+    Mirrors `_find_dialog_start` for the trailing page chrome (tim.blog's
+    legal/comments footer, 99pi's related-episodes sidebar). Anything past
+    the last real-speaker turn is page chrome — even if some of those rows
+    parse as `Speaker: text` themselves.
+    """
+    for i in range(len(lines) - 1, -1, -1):
+        prefix = _speaker_prefix(lines[i])
+        if prefix and prefix.lower() in real_speakers:
+            return i + 1
+    return None
+
+
 # An inline `[HH:MM:SS]` or `[MM:SS]` marker dropped mid-paragraph by the
 # publisher's transcript (the New Yorker's S3 transcripts sprinkle one
 # every ~60 seconds even though the surrounding sentence is mid-thought).
@@ -364,6 +398,16 @@ def text_or_html_to_transcript(body: str) -> str:
         ]
     else:
         lines = lines[speaker_start:]
+
+    # Drop trailing page chrome the same way we drop leading chrome.
+    # tim.blog appends a legal/comments block, 99pi a related-episodes
+    # sidebar — both contain `Speaker: text`-shaped lines but only real
+    # interview speakers recur.
+    real_speakers = _real_speaker_prefixes(lines)
+    if real_speakers:
+        speaker_end = _find_dialog_end(lines, real_speakers)
+        if speaker_end is not None:
+            lines = lines[:speaker_end]
 
     return "\n".join(lines).strip() + "\n"
 
