@@ -253,5 +253,43 @@ class UrlIngestArticleTranscriptProviderTests(unittest.TestCase):
         self.assertEqual(provenance["chapters"][0], {"time": "00:00", "title": "Introduction"})
 
 
+class UrlIngestSubstackProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out_root = Path(self.tmp.name) / "out"
+        self.fixtures = REPO_ROOT / "tests" / "fixtures" / "url_ingest"
+
+    def fixture_fetcher(self, mapping: dict[str, Path]):
+        def fetcher(url: str) -> tuple[int, str, bytes]:
+            if url not in mapping:
+                self.fail(f"unexpected fetch URL: {url}")
+            return 200, "application/json" if "transcription.json" in url else "text/html", mapping[url].read_bytes()
+        return fetcher
+
+    def test_lenny_substack_transcription_json_writes_bundle(self) -> None:
+        url = "https://www.lennysnewsletter.com/p/how-to-build-a-company-that-withstands"
+        transcript_url = "https://substackcdn.com/video_upload/post/12345/abcdef/transcription.json?Expires=9999999999&Signature=test"
+        episode_dir = self.url_ingest.ingest_url(
+            url,
+            self.out_root,
+            fetcher=self.fixture_fetcher(
+                {
+                    url: self.fixtures / "lenny_substack" / "page.html",
+                    transcript_url: self.fixtures / "lenny_substack" / "transcription.json",
+                }
+            ),
+        )
+        transcript = (episode_dir / "source" / "user-provided-transcript.txt").read_text(encoding="utf-8")
+        self.assertIn("Lenny Rachitsky: Eric, welcome to the podcast.", transcript)
+        self.assertIn("Eric Ries: Thanks for having me.", transcript)
+        source = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
+        self.assertIn("https://www.youtube.com/watch?v=PoJ1vTdHpks", source)
+        provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
+        self.assertEqual(provenance["provider_id"], "lenny_substack")
+        self.assertEqual(provenance["chapters"][1], {"time": "06:45", "title": "Long-term company building"})
+
+
 if __name__ == "__main__":
     unittest.main()

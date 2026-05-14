@@ -285,6 +285,91 @@ def ingest_article_with_transcript(
     return write_bundle(bundle, out_root)
 
 
+def find_substack_transcription_url(html_text: str, base_url: str) -> str:
+    cdn_match = re.search(
+        r'["\\]cdn_url["\\]\s*:\s*["\\](https://substackcdn\.com/[^"\\]+transcription\.json\?[^"\\]+)',
+        html_text,
+    )
+    if cdn_match:
+        return html.unescape(cdn_match.group(1).replace("\\/", "/").replace("\\u0026", "&"))
+    match = re.search(
+        r"https://substackcdn\.com/[^\"'<> ]+/transcription\.json",
+        html_text,
+    )
+    if match:
+        return html.unescape(match.group(0))
+    for link in extract_links(html_text, base_url):
+        if "substackcdn.com" in link["url"] and link["url"].endswith("transcription.json"):
+            return link["url"]
+    raise UrlIngestError("Substack page fetched, but no transcription.json URL was found")
+
+
+def extract_substack_speaker_map(html_text: str) -> dict[str, str]:
+    speaker_map: dict[str, str] = {}
+    match = re.search(r'["\\]speaker_map["\\]\s*:\s*(\{.*?\})', html_text)
+    if not match:
+        return speaker_map
+    raw = match.group(1).replace('\\"', '"')
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return speaker_map
+    for key, value in parsed.items():
+        speaker_map[clean_text(str(key))] = clean_text(str(value))
+    return speaker_map
+
+
+def substack_json_to_transcript(data: Any, speaker_map: dict[str, str]) -> str:
+    raw_segments = data
+    if isinstance(data, dict):
+        raw_segments = data.get("segments") or data.get("transcript") or []
+    lines: list[str] = []
+    for segment in raw_segments:
+        if not isinstance(segment, dict):
+            continue
+        speaker_key = clean_text(str(segment.get("speaker") or segment.get("speaker_label") or "SPEAKER"))
+        speaker = speaker_map.get(speaker_key, speaker_key)
+        text = clean_text(str(segment.get("text") or ""))
+        if text:
+            lines.append(f"{speaker}: {text}")
+    if not lines:
+        raise UrlIngestError("Substack transcription JSON contained no transcript segments")
+    return "\n".join(lines) + "\n"
+
+
+def ingest_substack(
+    url: str,
+    provider: dict[str, Any],
+    out_root: Path,
+    *,
+    slug: str | None,
+    fetcher: Callable[[str], tuple[int, str, bytes]],
+) -> Path:
+    temp_slug = slug or slugify(urllib.parse.urlparse(url).path.strip("/") or provider["id"])
+    episode_dir = out_root / temp_slug
+    page_path = fetch_once(url, episode_dir, "page.html", fetcher=fetcher)
+    page_html = page_path.read_text(encoding="utf-8")
+    transcript_url = find_substack_transcription_url(page_html, url)
+    transcript_path = fetch_once(transcript_url, episode_dir, "transcription.json", fetcher=fetcher)
+    transcript_json = json.loads(transcript_path.read_text(encoding="utf-8"))
+    title = extract_title(page_html)
+    links = extract_links(page_html, url)
+    speaker_map = extract_substack_speaker_map(page_html)
+    bundle = SourceBundle(
+        provider_id=provider["id"],
+        input_url=url,
+        canonical_url=url,
+        slug=slug or slugify(title or provider["id"]),
+        title=title,
+        transcript_text=substack_json_to_transcript(transcript_json, speaker_map),
+        transcript_source_url=transcript_url,
+        metadata=metadata_from_page(page_html),
+        chapters=extract_chapters(html_to_text(page_html)),
+        links=useful_links(links),
+    )
+    return write_bundle(bundle, out_root)
+
+
 def ingest_direct_transcript_link(
     url: str,
     provider: dict[str, Any],
@@ -347,6 +432,14 @@ def ingest_url(
         )
     if kind == "article_with_transcript":
         return ingest_article_with_transcript(
+            url,
+            provider,
+            out_root,
+            slug=slug,
+            fetcher=fetcher,
+        )
+    if kind == "substack":
+        return ingest_substack(
             url,
             provider,
             out_root,

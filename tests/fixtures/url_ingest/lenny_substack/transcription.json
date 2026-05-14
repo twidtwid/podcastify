@@ -1,0 +1,12 @@
+[
+  {
+    "speaker": "SPEAKER_1",
+    "start": 0,
+    "text": "Eric, welcome to the podcast."
+  },
+  {
+    "speaker": "SPEAKER_0",
+    "start": 4.2,
+    "text": "Thanks for having me."
+  }
+]
