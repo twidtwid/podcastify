@@ -16,6 +16,7 @@ import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -474,7 +475,58 @@ def metadata_from_page(html_text: str) -> dict[str, str]:
     time_match = re.search(r"<time\b[^>]*datetime=[\"']([^\"']+)[\"']", html_text, re.IGNORECASE)
     if time_match:
         metadata["date"] = clean_text(time_match.group(1))
+    if "date" not in metadata:
+        meta_match = re.search(
+            r"<meta\b[^>]*(?:property|name)=[\"'](?:article:published_time|datePublished|date|pubdate)[\"'][^>]*content=[\"']([^\"']+)[\"']",
+            html_text,
+            re.IGNORECASE,
+        )
+        if meta_match:
+            metadata["date"] = normalize_page_date(meta_match.group(1))
+    if "date" not in metadata:
+        json_ld_match = re.search(
+            r"[\"']datePublished[\"']\s*:\s*[\"']([^\"']+)[\"']",
+            html_text,
+            re.IGNORECASE,
+        )
+        if json_ld_match:
+            metadata["date"] = normalize_page_date(json_ld_match.group(1))
+    if "date" not in metadata:
+        episode_date_match = re.search(
+            r"<div\b[^>]*class=[\"'][^\"']*\bepisode_date\b[^\"']*[\"'][^>]*>(.*?)</div>",
+            html_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if episode_date_match:
+            date = extract_natural_page_date(strip_tags(episode_date_match.group(1)))
+            if date:
+                metadata["date"] = date
     return metadata
+
+
+def normalize_page_date(value: str) -> str:
+    value = clean_text(value)
+    iso_match = re.match(r"^(\d{4}-\d{2}-\d{2})", value)
+    return iso_match.group(1) if iso_match else value
+
+
+def extract_natural_page_date(text: str) -> str:
+    text = re.sub(r"\bPosted on\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\([^)]*\)", " ", text)
+    text = re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", text, flags=re.IGNORECASE)
+    text = clean_text(text)
+    match = re.search(
+        r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\s+(\d{4})\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return ""
+    normalized = f"{match.group(1)} {match.group(2)} {match.group(3)}"
+    try:
+        return datetime.strptime(normalized, "%B %d %Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return ""
 
 
 # Patterns that mark a link as obvious chrome / boilerplate rather than show

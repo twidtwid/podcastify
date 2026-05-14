@@ -386,7 +386,10 @@ class UrlIngestArticleTranscriptProviderTests(unittest.TestCase):
         self.assertIn("Rhonda Patrick: Arthur, welcome.", transcript)
         provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
         self.assertEqual(provenance["provider_id"], "foundmyfitness")
+        self.assertEqual(provenance["metadata"]["date"], "2026-03-24")
         self.assertEqual(provenance["chapters"][0], {"time": "00:00", "title": "Introduction"})
+        source_input = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
+        self.assertIn("Date: 2026-03-24", source_input)
 
 
 class UrlIngestSubstackProviderTests(unittest.TestCase):
