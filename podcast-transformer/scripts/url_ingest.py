@@ -233,6 +233,58 @@ def useful_links(links: list[dict[str, str]]) -> list[dict[str, str]]:
     return keep
 
 
+def extract_transcript_section(html_text: str) -> str:
+    text = html_to_text(html_text)
+    lines = text.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip().lower() in {"transcript", "transcription", "episode transcript", "full transcript"}:
+            start = index + 1
+            break
+    if start is None:
+        raise UrlIngestError("Page fetched, but no transcript section heading was found")
+    stop_headings = {"credits", "show notes", "references", "related", "newsletter"}
+    transcript_lines: list[str] = []
+    for line in lines[start:]:
+        normalized = line.strip().lower()
+        if normalized in stop_headings:
+            break
+        if line.strip():
+            transcript_lines.append(line.strip())
+    transcript = "\n".join(transcript_lines).strip()
+    if not transcript:
+        raise UrlIngestError("Transcript section was found but contained no transcript text")
+    return transcript + "\n"
+
+
+def ingest_article_with_transcript(
+    url: str,
+    provider: dict[str, Any],
+    out_root: Path,
+    *,
+    slug: str | None,
+    fetcher: Callable[[str], tuple[int, str, bytes]],
+) -> Path:
+    temp_slug = slug or slugify(urllib.parse.urlparse(url).path.strip("/") or provider["id"])
+    episode_dir = out_root / temp_slug
+    page_path = fetch_once(url, episode_dir, "page.html", fetcher=fetcher)
+    page_html = page_path.read_text(encoding="utf-8")
+    title = extract_title(page_html)
+    links = extract_links(page_html, url)
+    bundle = SourceBundle(
+        provider_id=provider["id"],
+        input_url=url,
+        canonical_url=url,
+        slug=slug or slugify(title or provider["id"]),
+        title=title,
+        transcript_text=extract_transcript_section(page_html),
+        metadata=metadata_from_page(page_html),
+        chapters=extract_chapters(html_to_text(page_html)),
+        links=useful_links(links),
+    )
+    return write_bundle(bundle, out_root)
+
+
 def ingest_direct_transcript_link(
     url: str,
     provider: dict[str, Any],
@@ -287,6 +339,14 @@ def ingest_url(
     kind = provider["kind"]
     if kind == "direct_transcript_link":
         return ingest_direct_transcript_link(
+            url,
+            provider,
+            out_root,
+            slug=slug,
+            fetcher=fetcher,
+        )
+    if kind == "article_with_transcript":
+        return ingest_article_with_transcript(
             url,
             provider,
             out_root,

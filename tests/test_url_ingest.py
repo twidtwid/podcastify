@@ -224,5 +224,34 @@ class UrlIngestDirectTranscriptProviderTests(unittest.TestCase):
         self.assertEqual(provenance["provider_id"], "99pi")
 
 
+class UrlIngestArticleTranscriptProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out_root = Path(self.tmp.name) / "out"
+        self.fixtures = REPO_ROOT / "tests" / "fixtures" / "url_ingest"
+
+    def fixture_fetcher(self, mapping: dict[str, Path]):
+        def fetcher(url: str) -> tuple[int, str, bytes]:
+            if url not in mapping:
+                self.fail(f"unexpected fetch URL: {url}")
+            return 200, "text/html; charset=utf-8", mapping[url].read_bytes()
+        return fetcher
+
+    def test_foundmyfitness_inline_transcript_writes_bundle(self) -> None:
+        url = "https://www.foundmyfitness.com/episodes/arthur-brooks"
+        episode_dir = self.url_ingest.ingest_url(
+            url,
+            self.out_root,
+            fetcher=self.fixture_fetcher({url: self.fixtures / "foundmyfitness" / "page.html"}),
+        )
+        transcript = (episode_dir / "source" / "user-provided-transcript.txt").read_text(encoding="utf-8")
+        self.assertIn("Rhonda Patrick: Arthur, welcome.", transcript)
+        provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
+        self.assertEqual(provenance["provider_id"], "foundmyfitness")
+        self.assertEqual(provenance["chapters"][0], {"time": "00:00", "title": "Introduction"})
+
+
 if __name__ == "__main__":
     unittest.main()
