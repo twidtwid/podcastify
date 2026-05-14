@@ -1,0 +1,32 @@
+{
+  "providers": [
+    {
+      "id": "lenny_substack",
+      "domains": ["www.lennysnewsletter.com"],
+      "kind": "substack"
+    },
+    {
+      "id": "new_yorker",
+      "domains": ["www.newyorker.com"],
+      "kind": "direct_transcript_link",
+      "transcript_link_contains": "transcript"
+    },
+    {
+      "id": "foundmyfitness",
+      "domains": ["www.foundmyfitness.com"],
+      "kind": "article_with_transcript"
+    },
+    {
+      "id": "tim_blog",
+      "domains": ["tim.blog"],
+      "kind": "direct_transcript_link",
+      "transcript_link_contains": "transcript"
+    },
+    {
+      "id": "99pi",
+      "domains": ["99percentinvisible.org"],
+      "kind": "direct_transcript_link",
+      "transcript_link_contains": "transcript"
+    }
+  ]
+}
