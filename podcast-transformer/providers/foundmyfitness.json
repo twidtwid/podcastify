@@ -1,5 +1,7 @@
 {
   "id": "foundmyfitness",
   "domains": ["www.foundmyfitness.com"],
-  "kind": "article_with_transcript"
+  "kind": "article_with_transcript",
+  "podcast_title": "FoundMyFitness",
+  "host": "Rhonda Patrick"
 }

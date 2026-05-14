@@ -23,6 +23,8 @@ import argparse
 import json
 import re
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -32,12 +34,64 @@ CLEAN_TRAIL_RE = re.compile(
     re.IGNORECASE,
 )
 BY_AUTHOR_RE = re.compile(r"\s+by\s+[A-Z][\w'.\- ]+$")
+URL_PROBE_TIMEOUT_SECONDS = 4.0
+URL_PROBE_USER_AGENT = (
+    "podcastextract-merge-terminology-urls/1.0 "
+    "(checks show-notes link liveness; https://github.com/twidtwid/podcastify)"
+)
 
 
 def clean_label(label: str) -> str:
     label = CLEAN_TRAIL_RE.sub("", label).strip()
     label = BY_AUTHOR_RE.sub("", label).strip()
     return label
+
+
+def url_is_live(url: str) -> bool:
+    """Return True iff `url` answers HEAD with a 2xx/3xx final status.
+
+    Show notes on publisher pages routinely point at URLs that 404'd
+    months ago (FoundMyFitness linked Robert Waldinger's now-removed
+    `/the-book` path, for example). Attaching dead links to terminology
+    entries gives the briefing's inspector a broken outlink button —
+    visually worse than no link at all. Reject 4xx/5xx, timeouts, and
+    network failures defensively. Some servers reject HEAD; fall back to
+    a tiny ranged GET so we don't blow false-negatives on those.
+    """
+    if not url:
+        return False
+    req = urllib.request.Request(
+        url,
+        method="HEAD",
+        headers={"User-Agent": URL_PROBE_USER_AGENT, "Accept": "*/*"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=URL_PROBE_TIMEOUT_SECONDS) as resp:
+            return 200 <= resp.status < 400
+    except urllib.error.HTTPError as exc:
+        # Some publishers (including a fair number of WordPress sites)
+        # disallow HEAD with 405. Retry with a ranged GET.
+        if exc.code in (405, 501):
+            return _url_is_live_get(url)
+        return False
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
+def _url_is_live_get(url: str) -> bool:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": URL_PROBE_USER_AGENT,
+            "Accept": "*/*",
+            "Range": "bytes=0-0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=URL_PROBE_TIMEOUT_SECONDS) as resp:
+            return 200 <= resp.status < 400
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+        return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     matched = 0
     added = 0
     skipped = 0
+    dead = 0
 
     for link in links:
         label = clean_label(link["label"])
@@ -98,11 +153,20 @@ def main(argv: list[str] | None = None) -> int:
 
         if existing is not None:
             if not existing.get("url"):
+                # Probe the URL before attaching: publisher show notes are
+                # littered with stale links (404s, moved pages) and a dead
+                # outlink in the briefing inspector is worse than no link.
+                if not url_is_live(url):
+                    dead += 1
+                    continue
                 existing["url"] = url
                 matched += 1
             else:
                 skipped += 1
         elif args.add_missing:
+            if not url_is_live(url):
+                dead += 1
+                continue
             new_term = {
                 "term": label,
                 "category": "concept",
@@ -119,7 +183,10 @@ def main(argv: list[str] | None = None) -> int:
     sidecar["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
     sidecar_path.write_text(json.dumps(sidecar, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    print(f"matched {matched} URLs, added {added}, skipped {skipped} (of {len(links)})")
+    print(
+        f"matched {matched} URLs, added {added}, "
+        f"skipped {skipped} already-set, rejected {dead} dead (of {len(links)})"
+    )
     return 0
 
 

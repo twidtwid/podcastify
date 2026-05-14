@@ -80,17 +80,16 @@ METADATA_SPEAKER_PREFIXES: frozenset[str] = frozenset({
 })
 BULLET_LINK_RE = re.compile(r"^\s*[••\-\*]\s*([^:\n]{2,80}?):\s*(https?://\S+)")
 MD_LINK_RE = re.compile(r"\[([^\]]{2,80})\]\((https?://[^)\s]+)\)")
-GUEST_RE = re.compile(
-    r"\b([A-Z][a-zA-Z'’\-]+(?:\s+[A-Z][a-zA-Z'’\-]+){1,3})\s+is\s+"
-    r"(?:the\s+|a\s+|an\s+)?"
-    r"(?:author|founder|co-founder|cofounder|CEO|creator|host|director|inventor)"
-)
-HOST_PATTERN = re.compile(
-    r"Where to find\s+([A-Z][a-zA-Z'’\-]+(?:\s+[A-Z][a-zA-Z'’\-]+)?)\s*:?",
-)
-BOOK_PATTERN = re.compile(
-    r"\b(?:new book|book)[,\s]+([A-Z][a-zA-Z'’\-]+(?:\s+[A-Z][a-zA-Z'’\-]+){0,3})\b"
-)
+# Guest detection runs on structured signals only — the publisher's title and
+# the canonical URL slug. The legacy prose miners (`<Name> is the founder/CEO/…`,
+# `Where to find <Name>`) overfit Lenny's specific show-notes voice and broke
+# on every other publisher; we'd rather report "no guest" than a wrong guest.
+# Host comes from the provider manifest (per-publisher constant) and
+# `derive_host_from_provider` below. Both are wired in main().
+# Book extraction also lived as a prose miner ("new book, <Capitalized Run>")
+# and was just as fragile as the guest miner. populate_terminology's LLM call
+# already categorizes books with full transcript context, so derive_book has
+# been removed and the slug derivation now uses guest-name-only.
 
 
 def clean_url(u: str) -> str:
@@ -186,6 +185,50 @@ def extract_inline_transcript(text: str) -> str:
     return "\n".join(lines[start:]).strip() + "\n"
 
 
+def _normalize_date(value: str) -> str:
+    """Normalize a bundle `Date:` value to YYYY-MM-DD for sidecar.published_at.
+
+    url_ingest writes whatever `<time datetime>` exposes (often a full ISO
+    timestamp like `2026-04-13T06:00:00-04:00`); the sidecar schema wants a
+    bare calendar date. Keep the first 10 chars if they look like a date,
+    otherwise return the original (lets a hand-written `Date: 2026-05-10`
+    pass through untouched).
+    """
+    if not value:
+        return ""
+    head = value[:10]
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", head):
+        return head
+    return value
+
+
+def parse_bundle_metadata(text: str) -> dict[str, str]:
+    """Read url_ingest bundle metadata back out of `_source_input.txt`.
+
+    url_ingest writes `Title: …`, `Podcast: …`, `Date: …`, `Host: …`,
+    `Guest: …`, `Duration seconds: …` as `Foo: bar` lines at the top of
+    `_source_input.txt`. parse_source's older heuristics derived these from
+    the URL slug, which failed for any publisher whose URL pattern wasn't
+    hard-coded (e.g. The New Yorker's `/podcast/the-new-yorker-radio-hour/…`)
+    and produced empty `episode.title` / `episode.podcast_title` in the
+    sidecar — which strict validation then rejects. Read the bundle's own
+    declarations so they're the authoritative source.
+
+    Only colon-prefixes in METADATA_SPEAKER_PREFIXES are recognized, so
+    prose lines like `Doctorow's three-stage platform decay: …` cannot
+    masquerade as metadata.
+    """
+    meta: dict[str, str] = {}
+    for line in text.splitlines():
+        if not SPEAKER_RE.match(line):
+            continue
+        prefix, _, value = line.partition(":")
+        key = prefix.strip().lower()
+        if key in METADATA_SPEAKER_PREFIXES:
+            meta.setdefault(key, value.strip())
+    return meta
+
+
 def derive_podcast_title(urls: list[str]) -> str:
     for url in urls:
         m = re.search(r"podcasts\.apple\.com/[a-z]+/podcast/([^/]+)/", url)
@@ -193,65 +236,41 @@ def derive_podcast_title(urls: list[str]) -> str:
             slug = m.group(1)
             words = [w.capitalize() for w in slug.split("-")]
             return " ".join(words)
-        m2 = re.search(r"lennysnewsletter\.com", url)
-        if m2:
+        if re.search(r"lennysnewsletter\.com", url):
             return "Lenny's Podcast: Product | Career | Growth"
+        # Generic /podcast/<slug>/ path. Matches New Yorker
+        # (newyorker.com/podcast/the-new-yorker-radio-hour/…) and any other
+        # publisher that mounts each show under a stable slug.
+        m2 = re.search(r"://(?:www\.)?[^/]+/podcast/([a-z0-9-]+)/", url)
+        if m2:
+            slug = m2.group(1)
+            return " ".join(w.capitalize() for w in slug.split("-"))
+        if re.search(r"tim\.blog", url):
+            return "The Tim Ferriss Show"
+        if re.search(r"foundmyfitness\.com", url):
+            return "FoundMyFitness"
+        if re.search(r"99percentinvisible\.org", url):
+            return "99% Invisible"
     return ""
 
 
 def derive_episode_title_from_url(url: str) -> str:
     m = re.search(r"/p/([a-z0-9-]+)", url)
-    if not m:
-        return ""
-    slug = m.group(1)
-    return " ".join(w.capitalize() for w in slug.split("-"))
-
-
-def derive_guest(text: str) -> str:
-    m = GUEST_RE.search(text)
-    return m.group(1) if m else ""
-
-
-def derive_host(text: str, guest: str) -> str:
-    """Collect every 'Where to find X' candidate, skip any that matches the
-    guest's first name, and use the last remaining (publisher convention is
-    `Where to find <guest>` first, then `Where to find <host>`)."""
-    guest_first = guest.split()[0].lower() if guest else ""
-    candidates: list[str] = []
-    for m in HOST_PATTERN.finditer(text):
-        name = m.group(1).strip()
-        if not name:
-            continue
-        if guest_first and name.split()[0].lower() == guest_first:
-            continue
-        candidates.append((name, m.end()))
-    if not candidates:
-        return ""
-    first, idx = candidates[-1]
-    if " " in first:
-        return first
-    # Single first name — look for "First Last" elsewhere
-    pat = re.compile(rf"\b({re.escape(first)} [A-Z][a-zA-Z'’\-]+)\b")
-    m2 = pat.search(text)
+    if m:
+        slug = m.group(1)
+        return " ".join(w.capitalize() for w in slug.split("-"))
+    # Tim Ferriss style: /YYYY/MM/DD/<guest-slug>/  (no Substack /p/ prefix).
+    m2 = re.search(r"/\d{4}/\d{1,2}/\d{1,2}/([a-z0-9-]+)/?$", url)
     if m2:
-        return m2.group(1)
-    # LinkedIn handle slug — common publisher pattern. Look only within the
-    # next 500 chars after the "Where to find" match and require a "LinkedIn"
-    # label within ~80 chars of the slug.
-    chunk = text[idx : idx + 500]
-    handle_pat = re.compile(
-        rf"linkedin[^a-zA-Z0-9]{{1,80}}?/?\s*{re.escape(first.lower())}([a-z]+)",
-        re.IGNORECASE,
-    )
-    m3 = handle_pat.search(chunk)
-    if m3:
-        return f"{first} {m3.group(1).capitalize()}"
-    return first
+        slug = m2.group(1)
+        return " ".join(w.capitalize() for w in slug.split("-"))
+    return ""
 
 
-def derive_book(text: str) -> str:
-    m = BOOK_PATTERN.search(text)
-    return m.group(1) if m else ""
+# Host/guest resolution lives in `scripts/resolve_speakers.py` — a dedicated
+# Ollama call that reads the title + first minutes of transcript. Keeping that
+# decision in the LLM (rather than fragile prose regex or URL-slug heuristics)
+# is the only thing that survives publisher-format drift.
 
 
 def slugify(s: str, maxlen: int = 60) -> str:
@@ -259,7 +278,7 @@ def slugify(s: str, maxlen: int = 60) -> str:
     return s[:maxlen]
 
 
-def derive_slug(canonical_url: str, guest: str, title_words: str, book: str = "") -> str:
+def derive_slug(canonical_url: str, guest: str, title_words: str) -> str:
     """A heuristic slug: <publisher>-<lastname>-<topic-word>. Falls back to
     the URL slug if not enough signal."""
     publisher = ""
@@ -278,12 +297,11 @@ def derive_slug(canonical_url: str, guest: str, title_words: str, book: str = ""
         if len(parts) >= 2:
             lastname = slugify(parts[-1])
 
-    # Prefer the book title as the topic word; fall back to a content word
-    # from the URL slug.
+    # Topic word: a content word from the title/URL slug. (The earlier
+    # `book`-as-topic shortcut was removed along with the prose-mining
+    # derive_book heuristic.)
     topic = ""
-    if book:
-        topic = slugify(book)
-    if not topic:
+    if True:
         stopwords = {"the", "and", "with", "that", "this", "from", "your", "what", "how", "why", "when", "where", "build", "company", "withstands"}
         for w in title_words.lower().split():
             w_clean = re.sub(r"[^a-z]+", "", w)
@@ -328,12 +346,27 @@ def main(argv: list[str] | None = None) -> int:
     chapters = extract_chapters(text)
     links = extract_links(text)
     transcript = extract_inline_transcript(text)
-    guest = derive_guest(text)
-    host = derive_host(text, guest)
-    book = derive_book(text)
-    podcast_title = derive_podcast_title(ordered_urls)
-    episode_title = derive_episode_title_from_url(canonical_url)
-    slug = derive_slug(canonical_url, guest, episode_title, book)
+    bundle_meta = parse_bundle_metadata(text)
+    bundle_title = bundle_meta.get("title", "")
+    # Host/guest resolution happens in a downstream LLM step
+    # (`resolve_speakers.py`); parse_source only forwards whatever the bundle
+    # explicitly declares (rare — most providers don't carry host/guest names).
+    guest = bundle_meta.get("guest", "")
+    host = bundle_meta.get("host", "")
+    podcast_title = (
+        bundle_meta.get("podcast")
+        or bundle_meta.get("podcast title")
+        or derive_podcast_title(ordered_urls)
+    )
+    episode_title = bundle_title or derive_episode_title_from_url(canonical_url)
+    published_at = _normalize_date(bundle_meta.get("date", ""))
+    try:
+        duration_seconds = (
+            int(bundle_meta["duration seconds"]) if "duration seconds" in bundle_meta else 0
+        )
+    except (TypeError, ValueError):
+        duration_seconds = 0
+    slug = derive_slug(canonical_url, guest, episode_title)
 
     if args.print_slug:
         print(slug)
@@ -359,7 +392,8 @@ def main(argv: list[str] | None = None) -> int:
         "episode_title_guess": episode_title,
         "host_guess": host,
         "guest_guess": guest,
-        "book_guess": book,
+        "published_at_guess": published_at,
+        "duration_seconds_guess": duration_seconds,
         "slug_guess": slug,
         "chapters": chapters,
         "links": links,

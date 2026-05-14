@@ -152,6 +152,30 @@ def strip_tags(text: str) -> str:
     return clean_text(TAG_RE.sub(" ", text))
 
 
+def strip_title_suffix(title: str, provider: dict[str, Any]) -> str:
+    """Drop a publisher-specific SEO suffix from the page's og:title.
+
+    Tim.blog renders og:title as `<episode> - The Blog of Author Tim Ferriss`
+    — a ~32-char suffix that breaks the briefing layout. Providers can
+    declare `title_strip_suffix` (string or list of strings) to peel those
+    off. Substring match at the END of the title, case-insensitive,
+    repeated until no more suffixes apply.
+    """
+    suffixes = provider.get("title_strip_suffix") or []
+    if isinstance(suffixes, str):
+        suffixes = [suffixes]
+    changed = True
+    while changed:
+        changed = False
+        for suffix in suffixes:
+            if not suffix:
+                continue
+            if title.lower().endswith(suffix.lower()):
+                title = title[: -len(suffix)].rstrip(" -–—|·:")
+                changed = True
+    return title
+
+
 def extract_title(html_text: str) -> str:
     og = re.search(
         r"<meta\b[^>]*(?:property|name)=[\"']og:title[\"'][^>]*content=\"([^\"]+)\"",
@@ -183,10 +207,23 @@ def extract_links(html_text: str, base_url: str) -> list[dict[str, str]]:
 
 
 def html_to_text(html_text: str) -> str:
+    # Drop the entire contents of `<script>` and `<style>` blocks before any
+    # other processing. WordPress podcast sites (99percentinvisible.org and
+    # tim.blog both) embed schema.org JSON-LD inside `<script type=
+    # "application/ld+json">` that otherwise survives the tag-stripping pass
+    # and gets fed downstream as if it were transcript prose — corrupting
+    # resolve_speakers (which sees JSON instead of dialogue) and the entire
+    # transcript browser. Same hazard for inline `<style>`.
+    text = re.sub(
+        r"<(script|style)\b[^>]*>.*?</\1>",
+        "\n",
+        html_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
     text = re.sub(
         r"</?(?:p|div|section|article|header|footer|br|h[1-6]|li|ul|ol|blockquote)\b[^>]*>",
         "\n",
-        html_text,
+        text,
         flags=re.IGNORECASE,
     )
     text = TAG_RE.sub(" ", text)
@@ -209,9 +246,80 @@ def extract_chapters(text: str) -> list[dict[str, str]]:
     return chapters
 
 
+# Lines a publisher transcript page renders ABOVE the actual dialog that we
+# never want flowing downstream as if it were speech. 99pi's WordPress shell
+# pads ~100 lines of nav chrome before the first speaker line; Tim Ferriss's
+# transcript pages do similar. Keep this list narrow — generic markers that
+# only appear in page chrome, not in real conversation.
+_TRANSCRIPT_LEADING_CHROME_MARKERS = (
+    "skip to content",
+    "skip to main content",
+    "toggle navigation",
+    "you are using an outdated browser",
+    "subscribe to the newsletter",
+    "search this site",
+)
+
+# A speaker line: 1-4 Capitalized words, then `:`, then content. Matches
+# "Tim Ferriss: ...", "Elad Gil: ...", "CORY DOCTOROW: ...", "Dr. Arthur Brooks:
+# ...". Rejects long page titles like "The Tim Ferriss Show Transcripts:
+# Elad Gil, Consigliere..." that share the colon shape but have more
+# than 4 capitalized tokens before the colon.
+_TRANSCRIPT_SPEAKER_LINE_RE = re.compile(
+    r"^[A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]+){0,3}:\s+\S",
+)
+# A speaker-looking line whose colon-prefix is actually a publisher metadata
+# label, not a speaker. tim.blog renders "Topics: The Tim Ferriss Show
+# Transcripts" above the real transcript; without this, the speaker regex
+# would lock onto that line and we'd still ship 80+ lines of nav chrome.
+_TRANSCRIPT_METADATA_PREFIXES = frozenset({
+    "topics",
+    "topic",
+    "tags",
+    "tag",
+    "category",
+    "categories",
+    "filed under",
+    "posted in",
+    "published",
+    "date",
+    "by",
+    "author",
+    "share",
+})
+
+
+def _is_real_speaker_line(line: str) -> bool:
+    if not _TRANSCRIPT_SPEAKER_LINE_RE.match(line):
+        return False
+    prefix = line.split(":", 1)[0].strip().lower()
+    return prefix not in _TRANSCRIPT_METADATA_PREFIXES
+
+
 def text_or_html_to_transcript(body: str) -> str:
     text = html_to_text(body) if "<" in body and ">" in body else body
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    # Find the first line that looks like a speaker turn. Page chrome (nav
+    # links, "skip to content", "you are using an outdated browser", schema
+    # breadcrumbs, etc.) never matches the `Name: prose` shape. Trimming
+    # everything before that first speaker turn cuts ~100 lines of WordPress
+    # chrome out of the 99pi/Tim Ferriss outputs without touching the New
+    # Yorker (plain-text S3 file, already clean) or FoundMyFitness (uses
+    # extract_transcript_section, not this function) flows.
+    speaker_start = next(
+        (i for i, line in enumerate(lines) if _is_real_speaker_line(line)),
+        None,
+    )
+    if speaker_start is None:
+        # Fall back to dropping lines matching known chrome markers.
+        lines = [
+            line for line in lines
+            if not any(marker in line.lower() for marker in _TRANSCRIPT_LEADING_CHROME_MARKERS)
+        ]
+    else:
+        lines = lines[speaker_start:]
+
     return "\n".join(lines).strip() + "\n"
 
 
@@ -220,12 +328,56 @@ def select_transcript_link(
     *,
     contains: str,
 ) -> dict[str, str] | None:
+    """Pick the link most likely to point at THIS episode's transcript.
+
+    A naive `first match for "transcript"` scan picked the wrong link on
+    tim.blog episode pages, which carry three transcript-flavored links:
+
+        - "The Tim Ferriss Show Transcripts" -> /category/...transcripts/
+        - "This episode"                     -> /YYYY/MM/DD/<slug>-transcript/
+        - "All episodes"                     -> /YYYY/MM/DD/all-transcripts.../
+
+    The first match was the index page, which then yielded a "list of every
+    transcript ever" instead of the Elad Gil dialog. Score candidates so
+    per-episode permalinks beat indexes and category pages.
+    """
     needle = contains.lower()
+    candidates: list[tuple[int, dict[str, str]]] = []
     for link in links:
-        haystack = f"{link.get('text', '')} {link.get('url', '')}".lower()
-        if needle in haystack:
-            return link
-    return None
+        url = (link.get("url") or "").lower()
+        text = (link.get("text") or "").lower()
+        haystack = f"{text} {url}"
+        if needle not in haystack:
+            continue
+        score = 0
+        # Negative: archive / index / category pages — these are NOT one
+        # episode's transcript, they're a list of many.
+        if any(
+            marker in url
+            for marker in (
+                "/category/",
+                "/tag/",
+                "all-transcripts",
+                "/transcripts/",  # plural-suffixed list
+                "/transcripts-from-",
+            )
+        ):
+            score -= 100
+        # Positive: dated permalink — tim.blog uses /YYYY/MM/DD/<slug>-transcript/.
+        if re.search(r"/\d{4}/\d{1,2}/\d{1,2}/[^/]+-transcript", url):
+            score += 50
+        # Positive: an explicit per-episode label.
+        if "this episode" in text or "episode transcript" in text:
+            score += 30
+        # Slight bonus for the singular "transcript" anywhere in the URL
+        # path's terminal slug (e.g. ".../elad-gil-transcript/").
+        if re.search(r"-transcript/?$", url) or re.search(r"/transcript/?$", url):
+            score += 10
+        candidates.append((score, link))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][1]
 
 
 def metadata_from_page(html_text: str) -> dict[str, str]:
@@ -236,12 +388,86 @@ def metadata_from_page(html_text: str) -> dict[str, str]:
     return metadata
 
 
+# Patterns that mark a link as obvious chrome / boilerplate rather than show
+# notes (newsletter signup, login, social-share buttons, legal footer, etc.).
+# Keeping these out lets extract_entity_links downstream pull real entity links
+# (Wikipedia, product pages, personal sites) from `_source_input.txt` without
+# drowning in header/footer noise — and prevents fake "Privacy" / "Terms" /
+# "[email protected]" terminology entries from being introduced downstream.
+_LINK_NOISE_URL_SUBSTRINGS = (
+    "twitter.com/intent",
+    "x.com/intent",
+    "facebook.com/sharer",
+    "linkedin.com/share",
+    "reddit.com/submit",
+    "mailto:",
+    # Publisher legal / footer
+    "substack.com/privacy",
+    "substack.com/tos",
+    "substack.com/ccpa",
+    "substack.com/dmca",
+    "substack.com/copyright",
+    "substack.com/about",
+    "substack.com/app",
+    "substack.com/home",
+    "substack.com/start",
+    "substack.com/sitemap",
+    "/cdn-cgi/l/email-protection",  # Cloudflare email obfuscation rewrites
+    "enable-javascript.com",         # noscript fallback
+    "javascript:",
+    # Auth / account chrome
+    "/login", "/signin", "/sign-in", "/signup", "/sign-up", "/subscribe",
+    "/account", "/feed/rss", ".rss",
+)
+
+
+def _link_is_noise(link: dict[str, str]) -> bool:
+    url = (link.get("url") or "").lower()
+    if not url.startswith(("http://", "https://")):
+        return True
+    text = (link.get("text") or "").strip().lower()
+    # Drop link bullets whose ANCHOR TEXT is a known chrome label. Catches
+    # the case where the URL alone looks innocuous but the rendered label is
+    # something like "Privacy" / "Terms" / "Collection notice".
+    chrome_labels = {
+        "privacy", "privacy policy",
+        "terms", "terms of service", "terms of use",
+        "collection notice", "data collection",
+        "ccpa", "gdpr",
+        "cookies", "cookie policy",
+        "dmca", "copyright", "copyright policy",
+        "sitemap", "rss", "rss feed",
+        "[email protected]", "email protected",
+        "turn on javascript", "enable javascript",
+        "sign in", "log in", "subscribe", "sign up",
+    }
+    if text in chrome_labels:
+        return True
+    return any(noisy in url for noisy in _LINK_NOISE_URL_SUBSTRINGS)
+
+
 def useful_links(links: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Filter the page's `<a>` extraction down to what's useful as show notes.
+
+    Previously this kept ONLY Apple / Spotify / YouTube platform links, which
+    silently dropped every Wikipedia, vendor, and personal-site link a real
+    publisher's show notes include — so `extract_entity_links` later had
+    nothing to attach to terminology entries and the briefing's inspector
+    showed zero outlinks. Now we keep everything except obvious chrome
+    (auth, share intents, RSS feeds) and de-dupe by URL, preserving order.
+    The downstream bullet-list extractor (extract_entity_links.py) does the
+    real entity matching against an `Eric Ries: https://…` pattern.
+    """
+    seen: set[str] = set()
     keep: list[dict[str, str]] = []
     for link in links:
-        haystack = f"{link.get('text', '')} {link.get('url', '')}".lower()
-        if any(marker in haystack for marker in ("apple", "spotify", "youtube", "youtu.be")):
-            keep.append(link)
+        if _link_is_noise(link):
+            continue
+        url = link.get("url") or ""
+        if url in seen:
+            continue
+        seen.add(url)
+        keep.append(link)
     return keep
 
 
@@ -281,8 +507,13 @@ def ingest_article_with_transcript(
     episode_dir = out_root / temp_slug
     page_path = fetch_once(url, episode_dir, "page.html", fetcher=fetcher)
     page_html = page_path.read_text(encoding="utf-8")
-    title = extract_title(page_html)
+    title = strip_title_suffix(extract_title(page_html), provider)
     links = extract_links(page_html, url)
+    page_metadata = metadata_from_page(page_html)
+    if provider.get("podcast_title"):
+        page_metadata.setdefault("podcast_title", provider["podcast_title"])
+    if provider.get("host"):
+        page_metadata.setdefault("host", provider["host"])
     bundle = SourceBundle(
         provider_id=provider["id"],
         input_url=url,
@@ -290,7 +521,7 @@ def ingest_article_with_transcript(
         slug=slug or slugify(title or provider["id"]),
         title=title,
         transcript_text=extract_transcript_section(page_html),
-        metadata=metadata_from_page(page_html),
+        metadata=page_metadata,
         chapters=extract_chapters(html_to_text(page_html)),
         links=useful_links(links),
     )
@@ -326,7 +557,14 @@ def find_substack_transcription_url(html_text: str, base_url: str) -> str:
 
 def extract_substack_speaker_map(html_text: str) -> dict[str, str]:
     speaker_map: dict[str, str] = {}
-    match = re.search(r'["\\]speaker_map["\\]\s*:\s*(\{.*?\})', html_text)
+    # The speaker_map embed in a Substack post page lives inside HTML-escaped
+    # JSON: bytes look like `\"speaker_map\":{\"SPEAKER_0\":\"Eric Ries\"...}`,
+    # so the chars flanking `speaker_map` are `\` then `"` (two characters),
+    # not a single quote. The old `["\\]` char class only consumed one char and
+    # then choked on the next `"` before the `:`. Use `["\\]+` to absorb any
+    # run of quote/backslash escape characters on either side. Stays compatible
+    # with un-escaped JSON in case Substack ever serves a plain embed.
+    match = re.search(r'["\\]+speaker_map["\\]+\s*:\s*(\{.*?\})', html_text)
     if not match:
         return speaker_map
     raw = match.group(1).replace('\\"', '"')
@@ -372,9 +610,21 @@ def ingest_substack(
     transcript_url = find_substack_transcription_url(page_html, url)
     transcript_path = fetch_once(transcript_url, episode_dir, "transcription.json", fetcher=fetcher)
     transcript_json = json.loads(transcript_path.read_text(encoding="utf-8"))
-    title = extract_title(page_html)
+    title = strip_title_suffix(extract_title(page_html), provider)
     links = extract_links(page_html, url)
     speaker_map = extract_substack_speaker_map(page_html)
+    page_metadata = metadata_from_page(page_html)
+    # Substack transcription.json is a flat list of {start, end, text, ...}
+    # segments — the wall-clock duration is the last segment's `end`. Surface
+    # it as bundle metadata so sidecar.episode.duration_seconds isn't None
+    # (the renderer otherwise shows "0M" on the library index card).
+    duration_seconds = _substack_duration_seconds(transcript_json)
+    if duration_seconds:
+        page_metadata.setdefault("duration_seconds", str(duration_seconds))
+    if provider.get("podcast_title"):
+        page_metadata.setdefault("podcast_title", provider["podcast_title"])
+    if provider.get("host"):
+        page_metadata.setdefault("host", provider["host"])
     bundle = SourceBundle(
         provider_id=provider["id"],
         input_url=url,
@@ -383,11 +633,28 @@ def ingest_substack(
         title=title,
         transcript_text=substack_json_to_transcript(transcript_json, speaker_map),
         transcript_source_url=transcript_url,
-        metadata=metadata_from_page(page_html),
+        metadata=page_metadata,
         chapters=extract_chapters(html_to_text(page_html)),
         links=useful_links(links),
     )
     return write_bundle(bundle, out_root)
+
+
+def _substack_duration_seconds(transcript_json: Any) -> int:
+    """Return the wall-clock duration in seconds from a Substack-style
+    transcription.json. The payload is either a list of segments or a dict
+    wrapping `segments` / `transcript`. The last segment's `end` field is the
+    authoritative duration; round up to a whole second."""
+    segments = transcript_json
+    if isinstance(transcript_json, dict):
+        segments = transcript_json.get("segments") or transcript_json.get("transcript") or []
+    if not segments:
+        return 0
+    try:
+        last_end = segments[-1].get("end") if isinstance(segments[-1], dict) else None
+        return int(float(last_end)) if last_end is not None else 0
+    except (TypeError, ValueError):
+        return 0
 
 
 def ingest_direct_transcript_link(
@@ -416,7 +683,12 @@ def ingest_direct_transcript_link(
         fetcher=fetcher,
     )
     transcript_body = transcript_path.read_text(encoding="utf-8")
-    title = extract_title(page_html)
+    title = strip_title_suffix(extract_title(page_html), provider)
+    page_metadata = metadata_from_page(page_html)
+    if provider.get("podcast_title"):
+        page_metadata.setdefault("podcast_title", provider["podcast_title"])
+    if provider.get("host"):
+        page_metadata.setdefault("host", provider["host"])
     bundle = SourceBundle(
         provider_id=provider["id"],
         input_url=url,
@@ -425,7 +697,7 @@ def ingest_direct_transcript_link(
         title=title,
         transcript_text=text_or_html_to_transcript(transcript_body),
         transcript_source_url=transcript_link["url"],
-        metadata=metadata_from_page(page_html),
+        metadata=page_metadata,
         chapters=extract_chapters(html_to_text(page_html)),
         links=useful_links(links),
     )
@@ -475,10 +747,23 @@ def format_source_input(bundle: SourceBundle) -> str:
         f"Title: {bundle.title}" if bundle.title else "",
         f"Transcript URL: {bundle.transcript_source_url}" if bundle.transcript_source_url else "",
     ]
-    for key in ("date", "duration", "host", "guest"):
+    # Display label per bundle metadata key. `podcast_title` -> `Podcast:` and
+    # `duration_seconds` -> `Duration seconds:` so parse_source can pick them
+    # up by exact prefix and feed sidecar.episode.podcast_title /
+    # episode.duration_seconds — both required for strict validation + the
+    # library-index duration chip.
+    metadata_labels = {
+        "date": "Date",
+        "duration": "Duration",
+        "duration_seconds": "Duration seconds",
+        "host": "Host",
+        "guest": "Guest",
+        "podcast_title": "Podcast",
+    }
+    for key, label in metadata_labels.items():
         value = bundle.metadata.get(key)
         if value:
-            lines.append(f"{key.title()}: {value}")
+            lines.append(f"{label}: {value}")
     if bundle.links:
         lines.append("")
         lines.append("Links:")
