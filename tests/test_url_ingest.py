@@ -152,5 +152,77 @@ class UrlIngestHtmlUtilityTests(unittest.TestCase):
         )
 
 
+class UrlIngestDirectTranscriptProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out_root = Path(self.tmp.name) / "out"
+        self.fixtures = REPO_ROOT / "tests" / "fixtures" / "url_ingest"
+
+    def fixture_fetcher(self, mapping: dict[str, Path]):
+        def fetcher(url: str) -> tuple[int, str, bytes]:
+            if url not in mapping:
+                self.fail(f"unexpected fetch URL: {url}")
+            return 200, "text/html; charset=utf-8", mapping[url].read_bytes()
+        return fetcher
+
+    def test_new_yorker_direct_transcript_link_writes_bundle(self) -> None:
+        url = "https://www.newyorker.com/podcast/the-new-yorker-radio-hour/sam-altmans-trust-issues-at-openai"
+        transcript_url = url + "/transcript"
+        episode_dir = self.url_ingest.ingest_url(
+            url,
+            self.out_root,
+            fetcher=self.fixture_fetcher(
+                {
+                    url: self.fixtures / "new_yorker" / "page.html",
+                    transcript_url: self.fixtures / "new_yorker" / "transcript.txt",
+                }
+            ),
+        )
+        transcript = (episode_dir / "source" / "user-provided-transcript.txt").read_text(encoding="utf-8")
+        self.assertIn("HOST: This is the New Yorker Radio Hour.", transcript)
+        source = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
+        self.assertIn("Sam Altman's Trust Issues at OpenAI", source)
+        self.assertIn("Apple Podcasts", source)
+
+    def test_tim_blog_direct_transcript_link_converts_html_transcript(self) -> None:
+        url = "https://tim.blog/2026/04/29/elad-gil/"
+        transcript_url = "https://tim.blog/2026/04/29/elad-gil-transcript/"
+        episode_dir = self.url_ingest.ingest_url(
+            url,
+            self.out_root,
+            fetcher=self.fixture_fetcher(
+                {
+                    url: self.fixtures / "tim_blog" / "page.html",
+                    transcript_url: self.fixtures / "tim_blog" / "transcript.html",
+                }
+            ),
+        )
+        transcript = (episode_dir / "source" / "user-provided-transcript.txt").read_text(encoding="utf-8")
+        self.assertIn("Tim Ferriss: Welcome back.", transcript)
+        provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
+        self.assertEqual(provenance["provider_id"], "tim_blog")
+        self.assertEqual(provenance["chapters"][1], {"time": "10:15", "title": "Startup markets"})
+
+    def test_99pi_direct_transcript_link_writes_bundle(self) -> None:
+        url = "https://99percentinvisible.org/episode/666-enshittification/"
+        transcript_url = "https://99percentinvisible.org/episode/666-enshittification/transcript"
+        episode_dir = self.url_ingest.ingest_url(
+            url,
+            self.out_root,
+            fetcher=self.fixture_fetcher(
+                {
+                    url: self.fixtures / "99pi" / "page.html",
+                    transcript_url: self.fixtures / "99pi" / "transcript.html",
+                }
+            ),
+        )
+        transcript = (episode_dir / "source" / "user-provided-transcript.txt").read_text(encoding="utf-8")
+        self.assertIn("ROMAN MARS: This is 99% Invisible.", transcript)
+        provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
+        self.assertEqual(provenance["provider_id"], "99pi")
+
+
 if __name__ == "__main__":
     unittest.main()

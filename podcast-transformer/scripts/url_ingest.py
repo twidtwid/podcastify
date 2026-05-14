@@ -142,10 +142,16 @@ def strip_tags(text: str) -> str:
 
 def extract_title(html_text: str) -> str:
     og = re.search(
-        r"<meta\b[^>]*(?:property|name)=[\"']og:title[\"'][^>]*content=[\"']([^\"']+)[\"']",
+        r"<meta\b[^>]*(?:property|name)=[\"']og:title[\"'][^>]*content=\"([^\"]+)\"",
         html_text,
         re.IGNORECASE,
     )
+    if not og:
+        og = re.search(
+            r"<meta\b[^>]*(?:property|name)=[\"']og:title[\"'][^>]*content='([^']+)'",
+            html_text,
+            re.IGNORECASE,
+        )
     if og:
         return clean_text(og.group(1))
     h1 = re.search(r"<h1\b[^>]*>(.*?)</h1>", html_text, re.IGNORECASE | re.DOTALL)
@@ -189,6 +195,105 @@ def extract_chapters(text: str) -> list[dict[str, str]]:
         if match:
             chapters.append({"time": match.group(1), "title": clean_text(match.group(2))})
     return chapters
+
+
+def text_or_html_to_transcript(body: str) -> str:
+    text = html_to_text(body) if "<" in body and ">" in body else body
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines).strip() + "\n"
+
+
+def select_transcript_link(
+    links: list[dict[str, str]],
+    *,
+    contains: str,
+) -> dict[str, str] | None:
+    needle = contains.lower()
+    for link in links:
+        haystack = f"{link.get('text', '')} {link.get('url', '')}".lower()
+        if needle in haystack:
+            return link
+    return None
+
+
+def metadata_from_page(html_text: str) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    time_match = re.search(r"<time\b[^>]*datetime=[\"']([^\"']+)[\"']", html_text, re.IGNORECASE)
+    if time_match:
+        metadata["date"] = clean_text(time_match.group(1))
+    return metadata
+
+
+def useful_links(links: list[dict[str, str]]) -> list[dict[str, str]]:
+    keep: list[dict[str, str]] = []
+    for link in links:
+        haystack = f"{link.get('text', '')} {link.get('url', '')}".lower()
+        if any(marker in haystack for marker in ("apple", "spotify", "youtube", "youtu.be")):
+            keep.append(link)
+    return keep
+
+
+def ingest_direct_transcript_link(
+    url: str,
+    provider: dict[str, Any],
+    out_root: Path,
+    *,
+    slug: str | None,
+    fetcher: Callable[[str], tuple[int, str, bytes]],
+) -> Path:
+    temp_slug = slug or slugify(urllib.parse.urlparse(url).path.strip("/") or provider["id"])
+    episode_dir = out_root / temp_slug
+    page_path = fetch_once(url, episode_dir, "page.html", fetcher=fetcher)
+    page_html = page_path.read_text(encoding="utf-8")
+    links = extract_links(page_html, url)
+    transcript_link = select_transcript_link(
+        links,
+        contains=provider.get("transcript_link_contains", "transcript"),
+    )
+    if not transcript_link:
+        raise UrlIngestError(f"{provider['id']} page fetched, but no transcript link was found")
+    transcript_path = fetch_once(
+        transcript_link["url"],
+        episode_dir,
+        "transcript.html",
+        fetcher=fetcher,
+    )
+    transcript_body = transcript_path.read_text(encoding="utf-8")
+    title = extract_title(page_html)
+    bundle = SourceBundle(
+        provider_id=provider["id"],
+        input_url=url,
+        canonical_url=url,
+        slug=slug or slugify(title or provider["id"]),
+        title=title,
+        transcript_text=text_or_html_to_transcript(transcript_body),
+        transcript_source_url=transcript_link["url"],
+        metadata=metadata_from_page(page_html),
+        chapters=extract_chapters(html_to_text(page_html)),
+        links=useful_links(links),
+    )
+    return write_bundle(bundle, out_root)
+
+
+def ingest_url(
+    url: str,
+    out_root: Path = DEFAULT_OUT_ROOT,
+    *,
+    slug: str | None = None,
+    fetcher: Callable[[str], tuple[int, str, bytes]] = default_fetcher,
+) -> Path:
+    manifest = load_manifest()
+    provider = match_provider(url, manifest)
+    kind = provider["kind"]
+    if kind == "direct_transcript_link":
+        return ingest_direct_transcript_link(
+            url,
+            provider,
+            out_root,
+            slug=slug,
+            fetcher=fetcher,
+        )
+    raise UrlIngestError(f"Provider kind not implemented yet: {kind}")
 
 
 def format_source_input(bundle: SourceBundle) -> str:
@@ -259,11 +364,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT))
     parser.add_argument("--slug")
     args = parser.parse_args(argv)
-    manifest = load_manifest()
-    provider = match_provider(args.url, manifest)
-    raise UrlIngestError(
-        f"Provider {provider['id']} matched, but ingest is not implemented yet"
-    )
+    episode_dir = ingest_url(args.url, Path(args.out_root), slug=args.slug)
+    print(episode_dir)
+    return 0
 
 
 if __name__ == "__main__":
