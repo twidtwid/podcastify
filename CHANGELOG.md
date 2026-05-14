@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 - 2026-05-14
 
 - Adds direct URL-ingest support for Conversations with Tyler.
 - Preserves publisher canonical URLs from URL-ingest bundles when platform links such as YouTube or Apple Podcasts are also present.
