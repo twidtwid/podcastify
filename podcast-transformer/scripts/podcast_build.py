@@ -358,6 +358,37 @@ def write_verified_transcript(package: dict[str, Any], final_dir: Path) -> None:
     (final_dir / "transcript.verified.md").write_text("\n".join(lines), encoding="utf-8")
 
 
+UNCLEAR_RE = re.compile(
+    r"\[[^\]]*\b(?:inaudible|unintelligible|unclear)\b[^\]]*\]|\b(?:inaudible|unintelligible)\b|\[\s*\?\s*\]|\?\?\?",
+    re.IGNORECASE,
+)
+
+
+def sync_uncertain_spans(episode_dir: Path, package: dict[str, Any]) -> None:
+    sidecar_path = episode_dir / "final" / "metadata.sidecar.json"
+    if not sidecar_path.exists():
+        return
+    sidecar = read_json(sidecar_path)
+    verification = sidecar.setdefault("verification", {})
+    existing = verification.get("uncertain_spans")
+    if isinstance(existing, list) and existing:
+        return
+    spans: list[dict[str, str]] = []
+    for turn in package.get("turns", []):
+        text = str(turn.get("text") or "")
+        for match in UNCLEAR_RE.finditer(text):
+            spans.append({
+                "timestamp": "",
+                "speaker": str(turn.get("speaker") or ""),
+                "text": match.group(0),
+                "reason": "Transcript contains unclear or inaudible marker.",
+                "resolution_needed": "Review the publisher transcript or source audio if the span is material.",
+            })
+    if spans:
+        verification["uncertain_spans"] = spans
+        write_json(sidecar_path, sidecar)
+
+
 def render_template(template_name: str, package: dict[str, Any], title: str) -> str:
     template = (ASSET_DIR / template_name).read_text(encoding="utf-8")
     css = (ASSET_DIR / "artifact.css").read_text(encoding="utf-8")
@@ -382,6 +413,7 @@ def slim_for_glance(package: dict[str, Any]) -> dict[str, Any]:
 def render_artifacts(episode_dir: Path, package: dict[str, Any], only: str = "all") -> None:
     final_dir = episode_dir / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
+    sync_uncertain_spans(episode_dir, package)
     write_json(final_dir / "episode.package.json", package)
     write_verified_transcript(package, final_dir)
     if only in {"all", "transcript"}:
@@ -496,7 +528,10 @@ def run_existing_validators(episode_dir: Path) -> int:
     notes_path = episode_dir / "source" / "episode.notes.json"
     commands = [
         [sys.executable, str(sidecar_script), "validate", str(final_dir / "metadata.sidecar.json"), "--strict"],
-        [sys.executable, str(transcript_lint), str(final_dir / "transcript.verified.md")],
+        [
+            sys.executable, str(transcript_lint), str(final_dir / "transcript.verified.md"),
+            "--sidecar", str(final_dir / "metadata.sidecar.json"),
+        ],
     ]
     if notes_path.exists():
         commands.append([sys.executable, str(notes_lint), str(notes_path)])

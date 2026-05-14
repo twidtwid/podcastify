@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -65,6 +67,45 @@ class SpeakerLabelRecognitionTests(unittest.TestCase):
         lint = load_transcript_lint()
         text = "Doctorow's three-stage platform decay: a thesis with words after.\n"
         self.assertEqual(list(lint.SPEAKER_RE.finditer(text)), [])
+
+    def test_unclear_markers_are_clean_when_covered_by_sidecar(self) -> None:
+        lint = load_transcript_lint()
+        text = "Eric Ries: This phrase has [inaudible 00:03:14] in it.\n"
+        sidecar = {"verification": {"uncertain_spans": [{"text": "[inaudible 00:03:14]"}]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            sidecar_path = Path(tmp) / "metadata.sidecar.json"
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            errors, warnings, stats = lint.lint_text(text, sidecar_path=sidecar_path)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, ["no timestamps found"])
+        self.assertEqual(stats["unclear_markers"], 1)
+
+    def test_uncovered_unclear_markers_still_warn(self) -> None:
+        lint = load_transcript_lint()
+        text = "Guest: This phrase has [inaudible 00:03:14] in it.\n"
+        errors, warnings, stats = lint.lint_text(text)
+        self.assertEqual(errors, [])
+        self.assertIn(
+            "1 unclear/inaudible markers found; confirm sidecar uncertain_spans covers material cases",
+            warnings,
+        )
+        self.assertEqual(stats["unclear_markers"], 1)
+
+    def test_no_inline_timestamps_is_clean_when_sidecar_has_chapters(self) -> None:
+        lint = load_transcript_lint()
+        text = "David Remnick: Welcome.\nRonan Farrow: Thanks.\n"
+        sidecar = {
+            "episode": {"chapters": [{"start": 0, "title": "Opening"}]},
+            "verification": {"uncertain_spans": []},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            sidecar_path = Path(tmp) / "metadata.sidecar.json"
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            errors, warnings, stats = lint.lint_text(text, sidecar_path=sidecar_path)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+        self.assertEqual(stats["timestamps"], 0)
+        self.assertEqual(stats["sidecar_chapters"], 1)
 
 
 if __name__ == "__main__":

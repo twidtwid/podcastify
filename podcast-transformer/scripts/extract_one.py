@@ -105,7 +105,11 @@ def prepare_source_input(args: argparse.Namespace) -> tuple[Path, Path | None]:
         cmd.extend(["--slug", args.slug])
     result = run(cmd)
     stdout = result.stdout.decode("utf-8", errors="replace").strip()
-    episode_dir = Path(stdout.splitlines()[-1]) if stdout else resolve_episode_dir(args.out_root, args.slug)
+    episode_dir = (
+        Path(stdout.splitlines()[-1]).resolve()
+        if stdout
+        else resolve_episode_dir(args.out_root, args.slug)
+    )
     source_input = episode_dir / "source" / "_source_input.txt"
     if not source_input.exists():
         raise StepError(f"URL ingest did not create expected source file: {source_input}")
