@@ -290,6 +290,17 @@ class UrlIngestSubstackProviderTests(unittest.TestCase):
         self.assertEqual(provenance["provider_id"], "lenny_substack")
         self.assertEqual(provenance["chapters"][1], {"time": "06:45", "title": "Long-term company building"})
 
+    def test_substack_prefers_escaped_signed_cdn_url(self) -> None:
+        html_text = (
+            r'{\"transcription\":{\"cdn_url\":\"'
+            r'https://substackcdn.com/video_upload/post/1/abc/2/transcription.json?Expires=999&Signature=sig'
+            r'\",\"transcript_url\":\"s3://substack-video/video_upload/post/1/abc/2/transcription.json\"}}'
+        )
+        self.assertEqual(
+            self.url_ingest.find_substack_transcription_url(html_text, "https://example.com"),
+            "https://substackcdn.com/video_upload/post/1/abc/2/transcription.json?Expires=999&Signature=sig",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

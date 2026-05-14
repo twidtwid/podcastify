@@ -286,6 +286,14 @@ def ingest_article_with_transcript(
 
 
 def find_substack_transcription_url(html_text: str, base_url: str) -> str:
+    escaped_cdn_match = re.search(
+        r'\\\"cdn_url\\\":\\\"(https://substackcdn\.com/[^"\\]+transcription\.json\?[^"\\]+)\\\"',
+        html_text,
+    )
+    if escaped_cdn_match:
+        return html.unescape(
+            escaped_cdn_match.group(1).replace("\\/", "/").replace("\\u0026", "&")
+        )
     cdn_match = re.search(
         r'["\\]cdn_url["\\]\s*:\s*["\\](https://substackcdn\.com/[^"\\]+transcription\.json\?[^"\\]+)',
         html_text,
