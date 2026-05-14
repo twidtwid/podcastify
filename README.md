@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
-[![Release: 1.0](https://img.shields.io/badge/release-1.0-brightgreen.svg)](CHANGELOG.md)
+[![Release: 1.0.1](https://img.shields.io/badge/release-1.0.1-brightgreen.svg)](CHANGELOG.md)
 
 Turn a podcast episode into two self-contained HTML artifacts you can actually keep — a one-page **briefing** that replaces the podcast for a reader who isn't going to listen, and an **annotated transcript** with a sticky chapter rail and in-text search.
 

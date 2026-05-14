@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 - 2026-05-14
+
+Patch release for the main library index.
+
+- Extracts FoundMyFitness publish dates from `episode_date` blocks such as `Posted on March 24th 2026`.
+- Also recognizes common meta and JSON-LD publish-date fields during URL ingest.
+- Ensures FoundMyFitness dates flow into `_source_input.txt`, sidecar metadata, package JSON, and `podcast-output/index.html`.
+
 ## 1.0 - 2026-05-14
 
 First stable release of the URL-first podcast artifact pipeline.
