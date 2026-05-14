@@ -112,5 +112,45 @@ class UrlIngestScaffoldTests(unittest.TestCase):
         self.assertEqual(provenance["transcript_path"], "source/user-provided-transcript.txt")
 
 
+class UrlIngestHtmlUtilityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+
+    def test_extract_title_prefers_og_title_then_h1_then_title_tag(self) -> None:
+        html_text = """
+        <html><head>
+          <title>Fallback Title</title>
+          <meta property="og:title" content="Open Graph Episode">
+        </head><body><h1>Heading Episode</h1></body></html>
+        """
+        self.assertEqual(self.url_ingest.extract_title(html_text), "Open Graph Episode")
+
+    def test_extract_links_resolves_relative_urls_and_keeps_text(self) -> None:
+        html_text = '<a href="/transcript">Download a Transcript</a><a href="https://youtu.be/abc">Watch</a>'
+        links = self.url_ingest.extract_links(html_text, "https://example.com/episode")
+        self.assertEqual(
+            links,
+            [
+                {"url": "https://example.com/transcript", "text": "Download a Transcript"},
+                {"url": "https://youtu.be/abc", "text": "Watch"},
+            ],
+        )
+
+    def test_html_to_text_preserves_block_breaks_and_unescapes_entities(self) -> None:
+        text = self.url_ingest.html_to_text("<h2>Transcript</h2><p>HOST:&nbsp;Hello</p><p>GUEST: Hi</p>")
+        self.assertIn("Transcript\nHOST: Hello\nGUEST: Hi", text)
+
+    def test_extract_chapters_finds_common_timestamp_lines(self) -> None:
+        text = "00:00 Intro\n12:34 Building durable teams\n1:02:03 Closing thoughts"
+        self.assertEqual(
+            self.url_ingest.extract_chapters(text),
+            [
+                {"time": "00:00", "title": "Intro"},
+                {"time": "12:34", "title": "Building durable teams"},
+                {"time": "1:02:03", "title": "Closing thoughts"},
+            ],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

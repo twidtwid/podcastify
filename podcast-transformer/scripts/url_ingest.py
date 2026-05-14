@@ -123,6 +123,74 @@ def fetch_once(
     return path
 
 
+TAG_RE = re.compile(r"<[^>]+>")
+HREF_RE = re.compile(
+    r"<a\b[^>]*\bhref=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def clean_text(text: str) -> str:
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def strip_tags(text: str) -> str:
+    return clean_text(TAG_RE.sub(" ", text))
+
+
+def extract_title(html_text: str) -> str:
+    og = re.search(
+        r"<meta\b[^>]*(?:property|name)=[\"']og:title[\"'][^>]*content=[\"']([^\"']+)[\"']",
+        html_text,
+        re.IGNORECASE,
+    )
+    if og:
+        return clean_text(og.group(1))
+    h1 = re.search(r"<h1\b[^>]*>(.*?)</h1>", html_text, re.IGNORECASE | re.DOTALL)
+    if h1:
+        return strip_tags(h1.group(1))
+    title = re.search(r"<title\b[^>]*>(.*?)</title>", html_text, re.IGNORECASE | re.DOTALL)
+    return strip_tags(title.group(1)) if title else ""
+
+
+def extract_links(html_text: str, base_url: str) -> list[dict[str, str]]:
+    links: list[dict[str, str]] = []
+    for href, body in HREF_RE.findall(html_text):
+        url = urllib.parse.urljoin(base_url, html.unescape(href))
+        text = strip_tags(body)
+        links.append({"url": url, "text": text})
+    return links
+
+
+def html_to_text(html_text: str) -> str:
+    text = re.sub(
+        r"</?(?:p|div|section|article|header|footer|br|h[1-6]|li|ul|ol|blockquote)\b[^>]*>",
+        "\n",
+        html_text,
+        flags=re.IGNORECASE,
+    )
+    text = TAG_RE.sub(" ", text)
+    text = html.unescape(text).replace("\xa0", " ")
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    compact: list[str] = []
+    for line in lines:
+        if line:
+            compact.append(line)
+    return "\n".join(compact)
+
+
+def extract_chapters(text: str) -> list[dict[str, str]]:
+    chapters: list[dict[str, str]] = []
+    chapter_re = re.compile(r"^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+?)\s*$")
+    for line in text.splitlines():
+        match = chapter_re.match(line)
+        if match:
+            chapters.append({"time": match.group(1), "title": clean_text(match.group(2))})
+    return chapters
+
+
 def format_source_input(bundle: SourceBundle) -> str:
     lines = [
         f"Canonical URL: {bundle.canonical_url}",
