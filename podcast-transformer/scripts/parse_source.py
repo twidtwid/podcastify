@@ -41,6 +41,43 @@ CHAPTER_RE = re.compile(
     r"^\s*[-*•]?\s*\(?\[?(\d{1,2}):(\d{2})(?::(\d{2}))?\]?\)?\s*(?:[-–—]\s*)?(.+?)\s*$"
 )
 SPEAKER_RE = re.compile(r"^[A-Z][a-zA-Z .'-]{0,48}:\s+\S")
+
+# Colon-prefixes that look like SPEAKER_RE matches but are bundle metadata, not
+# transcript speakers. url_ingest writes `Canonical URL: ...`, `Title: ...`,
+# `Transcript URL: ...`, `Date: ...` and a `- YouTube: ...` link list into
+# _source_input.txt; without this guard, a metadata-only bundle triggers a
+# false-positive inline-transcript detection and clobbers the real transcript
+# url_ingest staged at source/user-provided-transcript.txt.
+METADATA_SPEAKER_PREFIXES: frozenset[str] = frozenset({
+    "canonical url",
+    "transcript url",
+    "title",
+    "podcast",
+    "podcast title",
+    "episode",
+    "episode title",
+    "episode number",
+    "episode url",
+    "date",
+    "published",
+    "published at",
+    "duration",
+    "duration seconds",
+    "host",
+    "guest",
+    "links",
+    "show notes",
+    "show notes links",
+    "source",
+    "publisher",
+    "url",
+    "youtube",
+    "spotify",
+    "apple podcasts",
+    "rss",
+    "language",
+    "format",
+})
 BULLET_LINK_RE = re.compile(r"^\s*[••\-\*]\s*([^:\n]{2,80}?):\s*(https?://\S+)")
 MD_LINK_RE = re.compile(r"\[([^\]]{2,80})\]\((https?://[^)\s]+)\)")
 GUEST_RE = re.compile(
@@ -126,16 +163,24 @@ def extract_links(text: str) -> list[dict[str, str]]:
     return pairs
 
 
+def is_speaker_line(line: str) -> bool:
+    """True if line matches SPEAKER_RE and the colon-prefix isn't bundle metadata."""
+    if not SPEAKER_RE.match(line):
+        return False
+    prefix = line.split(":", 1)[0].strip().lower()
+    return prefix not in METADATA_SPEAKER_PREFIXES
+
+
 def extract_inline_transcript(text: str) -> str:
     lines = text.splitlines()
     start = next(
-        (i for i, line in enumerate(lines) if SPEAKER_RE.match(line)),
+        (i for i, line in enumerate(lines) if is_speaker_line(line)),
         None,
     )
     if start is None:
         return ""
-    # Only treat as a transcript if there are at least 3 speaker turns.
-    speakers = sum(1 for line in lines[start:] if SPEAKER_RE.match(line))
+    # Only treat as a transcript if there are at least 3 real speaker turns.
+    speakers = sum(1 for line in lines[start:] if is_speaker_line(line))
     if speakers < 3:
         return ""
     return "\n".join(lines[start:]).strip() + "\n"
@@ -327,7 +372,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if transcript:
-        (ep / "source" / "user-provided-transcript.txt").write_text(transcript, encoding="utf-8")
+        out_path = ep / "source" / "user-provided-transcript.txt"
+        # Belt-and-suspenders: parse_source is a metadata extractor, not the
+        # authoritative transcript writer. If url_ingest (or the user) already
+        # staged a real transcript, leave it alone. The 100-byte floor lets a
+        # stub from a previous failed run get overwritten by a real detection.
+        if not out_path.exists() or out_path.stat().st_size < 100:
+            out_path.write_text(transcript, encoding="utf-8")
 
     print(f"Episode dir:   {ep}")
     print(f"Slug guess:    {slug}")
