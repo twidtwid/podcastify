@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 URL_INGEST = REPO_ROOT / "podcast-transformer" / "scripts" / "url_ingest.py"
-PROVIDERS = REPO_ROOT / "podcast-transformer" / "providers.json"
+PROVIDERS = REPO_ROOT / "podcast-transformer" / "providers"
 
 
 def load_url_ingest():
@@ -33,6 +33,19 @@ class UrlIngestManifestTests(unittest.TestCase):
         self.assertEqual(
             ids,
             {"lenny_substack", "new_yorker", "foundmyfitness", "tim_blog", "99pi"},
+        )
+
+    def test_provider_manifest_is_one_file_per_provider(self) -> None:
+        files = sorted(path.name for path in PROVIDERS.glob("*.json"))
+        self.assertEqual(
+            files,
+            [
+                "99pi.json",
+                "foundmyfitness.json",
+                "lenny_substack.json",
+                "new_yorker.json",
+                "tim_blog.json",
+            ],
         )
 
     def test_match_provider_uses_hostname_case_insensitively(self) -> None:

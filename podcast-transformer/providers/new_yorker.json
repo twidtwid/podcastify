@@ -1,0 +1,6 @@
+{
+  "id": "new_yorker",
+  "domains": ["www.newyorker.com"],
+  "kind": "direct_transcript_link",
+  "transcript_link_contains": "transcript"
+}

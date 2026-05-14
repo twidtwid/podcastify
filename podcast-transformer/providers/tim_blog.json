@@ -1,0 +1,6 @@
+{
+  "id": "tim_blog",
+  "domains": ["tim.blog"],
+  "kind": "direct_transcript_link",
+  "transcript_link_contains": "transcript"
+}

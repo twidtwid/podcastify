@@ -4,7 +4,7 @@
 
 Make `podcastextract` accept a single podcast episode URL for known publisher pages and produce the same local source package the existing pipeline already consumes.
 
-The first version should be deliberately small: one manifest file, one ingest script, no browser dependency on the happy path, and red/green tests for the real episodes Todd uses.
+The first version should be deliberately small: one manifest directory with one JSON file per provider, one ingest script, no browser dependency on the happy path, and red/green tests for the real episodes Todd uses.
 
 ## Non-Goals
 
@@ -33,7 +33,7 @@ The bar is not perfect universal extraction. The bar is: these URLs produce enou
 Add:
 
 ```text
-podcast-transformer/providers.json
+podcast-transformer/providers/
 podcast-transformer/scripts/url_ingest.py
 tests/fixtures/url_ingest/
 tests/test_url_ingest.py
@@ -59,43 +59,18 @@ Existing local-file behavior remains unchanged.
 
 ## Manifest
 
-Use one small JSON file:
+Use one small JSON file per provider host under `podcast-transformer/providers/`:
 
 ```json
 {
-  "providers": [
-    {
-      "id": "lenny_substack",
-      "domains": ["www.lennysnewsletter.com"],
-      "kind": "substack"
-    },
-    {
-      "id": "new_yorker",
-      "domains": ["www.newyorker.com"],
-      "kind": "direct_transcript_link",
-      "transcript_link_contains": "transcript"
-    },
-    {
-      "id": "foundmyfitness",
-      "domains": ["www.foundmyfitness.com"],
-      "kind": "article_with_transcript"
-    },
-    {
-      "id": "tim_blog",
-      "domains": ["tim.blog"],
-      "kind": "direct_transcript_link",
-      "transcript_link_contains": "transcript"
-    },
-    {
-      "id": "99pi",
-      "domains": ["99percentinvisible.org"],
-      "kind": "article_with_transcript"
-    }
-  ]
+  "id": "new_yorker",
+  "domains": ["www.newyorker.com"],
+  "kind": "direct_transcript_link",
+  "transcript_link_contains": "transcript"
 }
 ```
 
-This is not a DSL. It is a routing table plus one or two hints. If a site fails, add the smallest possible hint or one small built-in `kind`. Avoid per-site Python until repeated failures prove it is needed.
+This is not a DSL. Each file is a routing entry plus one or two hints. If a site fails, add the smallest possible hint or one small built-in `kind`. Avoid per-site Python until repeated failures prove it is needed.
 
 ## Provider Kinds
 
@@ -215,4 +190,3 @@ They should also say:
 
 - Whether to add `beautifulsoup4` immediately or first attempt stdlib `html.parser` plus regexes. Default: start with stdlib; add `beautifulsoup4` only if fixtures prove stdlib is too fragile.
 - Whether `url_ingest.py` should expose a `--fixture-dir` test mode or tests should monkeypatch fetch calls. Default: tests monkeypatch fetch calls and keep CLI simple.
-

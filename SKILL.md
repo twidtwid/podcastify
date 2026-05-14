@@ -29,6 +29,8 @@ Preferred input is a supported publisher episode URL. V1 supports:
 - 99% Invisible
 - The Tim Ferriss Show
 
+Supported providers are declared as one JSON file per host under `podcast-transformer/providers/`. Add a new host by contributing one small manifest file there, then add fixture coverage in `tests/fixtures/url_ingest/`.
+
 Local resource files are still supported. The resource file should contain (in any order):
 
 - A **canonical URL** for the episode.

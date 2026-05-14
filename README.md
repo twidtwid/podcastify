@@ -106,6 +106,8 @@ Supported v1 publisher pages:
 - 99% Invisible
 - The Tim Ferriss Show
 
+Supported providers are declared as one JSON file per host under [`podcast-transformer/providers/`](podcast-transformer/providers/). A new site should usually be one small manifest file plus fixture coverage.
+
 Local source files are still supported when a page cannot be fetched directly or when you want to provide a hand-curated transcript. The resource file should contain the episode's canonical URL plus its show notes (chapter timeline + entity link list). If the transcript is pasted into the resource file, the pipeline detects it and skips transcript fetching.
 
 Outside an agent skill runtime, run the orchestrator directly from whichever skills directory you cloned into:
@@ -176,7 +178,7 @@ Maintained by Todd. Contributions and worked-example reports are welcome.
 
 PRs welcome. The pipeline is a chain of small, single-purpose scripts under [`podcast-transformer/scripts/`](podcast-transformer/scripts/); each is stdlib-only Python with a clear input/output contract. Useful additions in priority order:
 
-1. **More publisher providers.** Today URL ingest supports a small set of publisher pages. Adding manifest entries and focused provider kinds for more sites would expand the input surface without broad scraping dependencies.
+1. **More publisher providers.** Today URL ingest supports a small set of publisher pages. Add one JSON file under [`podcast-transformer/providers/`](podcast-transformer/providers/) for each new host, using the smallest provider kind and hints that work for that site.
 2. **Publisher coverage reports.** Notes from episodes shaped from different publishers help exercise the pipeline against new edge cases without committing transcripts.
 3. **Renderer polish.** The briefing and transcript views are minimal by design; better mobile, accessibility, or a print stylesheet would all be welcome.
 

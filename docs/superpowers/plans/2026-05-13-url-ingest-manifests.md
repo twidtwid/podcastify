@@ -4,7 +4,7 @@
 
 **Goal:** Let `/podcastextract` accept one known podcast episode URL and automatically assemble the source file plus searchable transcript needed by the existing pipeline.
 
-**Architecture:** Add a small URL ingest layer ahead of the existing file-based pipeline. A single JSON manifest routes known domains to three built-in extraction strategies, writes normalized files into the episode package, and then `extract_one.py` continues through the current parser/build flow.
+**Architecture:** Add a small URL ingest layer ahead of the existing file-based pipeline. One JSON file per provider routes known domains to three built-in extraction strategies, writes normalized files into the episode package, and then `extract_one.py` continues through the current parser/build flow.
 
 **Tech Stack:** Python 3 standard library, `unittest`, JSON manifest, direct HTTP via `urllib.request`, existing `extract_one.py` and `parse_source.py` pipeline.
 
@@ -12,7 +12,7 @@
 
 ## File Structure
 
-- Create `podcast-transformer/providers.json`: one small manifest file containing domain routing and only the hints proven necessary by fixture tests.
+- Create `podcast-transformer/providers/*.json`: one small manifest file per provider containing domain routing and only the hints proven necessary by fixture tests.
 - Create `podcast-transformer/scripts/url_ingest.py`: URL matcher, fetch cache, HTML/text extraction helpers, provider implementations, and CLI entry point.
 - Consider later `podcast-transformer/scripts/dom_fetch.py`: optional rendered-DOM fetcher behind a flag, starting with Chrome headless `--dump-dom`, not part of the v1 happy path unless direct HTTP fixture/live tests prove it is required.
 - Create `tests/test_url_ingest.py`: fixture-only unit tests for the manifest, each provider kind, output contract, and error behavior.
@@ -84,7 +84,7 @@ YouTube metadata can be enriched without `yt-dlp`. Two low-complexity options wo
 ## Task 1: Manifest And Provider Matching
 
 **Files:**
-- Create: `podcast-transformer/providers.json`
+- Create: `podcast-transformer/providers`
 - Create: `podcast-transformer/scripts/url_ingest.py`
 - Test: `tests/test_url_ingest.py`
 
@@ -104,7 +104,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 URL_INGEST = REPO_ROOT / "podcast-transformer" / "scripts" / "url_ingest.py"
-PROVIDERS = REPO_ROOT / "podcast-transformer" / "providers.json"
+PROVIDERS = REPO_ROOT / "podcast-transformer" / "providers"
 
 
 def load_url_ingest():
@@ -162,42 +162,19 @@ Expected: FAIL with `FileNotFoundError` or import failure for `url_ingest.py`.
 
 - [ ] **Step 3: Add the manifest**
 
-Create `podcast-transformer/providers.json`:
+Create provider JSON files under `podcast-transformer/providers/`:
+
+`podcast-transformer/providers/lenny_substack.json`:
 
 ```json
 {
-  "providers": [
-    {
-      "id": "lenny_substack",
-      "domains": ["www.lennysnewsletter.com"],
-      "kind": "substack"
-    },
-    {
-      "id": "new_yorker",
-      "domains": ["www.newyorker.com"],
-      "kind": "direct_transcript_link",
-      "transcript_link_contains": "transcript"
-    },
-    {
-      "id": "foundmyfitness",
-      "domains": ["www.foundmyfitness.com"],
-      "kind": "article_with_transcript"
-    },
-    {
-      "id": "tim_blog",
-      "domains": ["tim.blog"],
-      "kind": "direct_transcript_link",
-      "transcript_link_contains": "transcript"
-    },
-    {
-      "id": "99pi",
-      "domains": ["99percentinvisible.org"],
-      "kind": "direct_transcript_link",
-      "transcript_link_contains": "transcript"
-    }
-  ]
+  "id": "lenny_substack",
+  "domains": ["www.lennysnewsletter.com"],
+  "kind": "substack"
 }
 ```
+
+Create equivalent small provider files for `new_yorker`, `foundmyfitness`, `tim_blog`, and `99pi`, adding `transcript_link_contains` only for direct transcript link providers.
 
 - [ ] **Step 4: Add minimal manifest implementation**
 
@@ -226,7 +203,7 @@ from typing import Any, Callable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROVIDERS_PATH = REPO_ROOT / "podcast-transformer" / "providers.json"
+PROVIDERS_PATH = REPO_ROOT / "podcast-transformer" / "providers"
 DEFAULT_OUT_ROOT = REPO_ROOT / "podcast-output"
 
 
@@ -235,11 +212,13 @@ class UrlIngestError(RuntimeError):
 
 
 def load_manifest(path: Path = PROVIDERS_PATH) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as fh:
-        manifest = json.load(fh)
-    if not isinstance(manifest.get("providers"), list):
-        raise UrlIngestError(f"Invalid providers manifest: {path}")
-    return manifest
+    providers = []
+    for provider_path in sorted(path.glob("*.json")):
+        with provider_path.open("r", encoding="utf-8") as fh:
+            providers.append(json.load(fh))
+    if not providers:
+        raise UrlIngestError(f"No provider manifests found in: {path}")
+    return {"providers": providers}
 
 
 def normalize_host(url: str) -> str:
@@ -299,7 +278,7 @@ Expected: PASS for the three manifest tests.
 Run:
 
 ```bash
-git add podcast-transformer/providers.json podcast-transformer/scripts/url_ingest.py tests/test_url_ingest.py
+git add podcast-transformer/providers podcast-transformer/scripts/url_ingest.py tests/test_url_ingest.py
 git commit -m "Add URL ingest provider manifest"
 ```
 
@@ -1846,6 +1825,6 @@ Expected: branch `codex/improve-podcast-skill` pushes successfully.
 
 ## Self-Review
 
-- Spec coverage: This plan covers the single manifest, URL ingest script, fixture-only tests for all five user examples, direct HTTP happy path, `browse-cli` demotion, `extract_one.py` URL acceptance, output contract, unknown-domain error behavior, and docs updates.
+- Spec coverage: This plan covers provider manifest files, URL ingest script, fixture-only tests for all five user examples, direct HTTP happy path, `browse-cli` demotion, `extract_one.py` URL acceptance, output contract, unknown-domain error behavior, and docs updates.
 - Deliberate omissions: Live network tests are not included because the spec explicitly keeps unit tests fixture-only and treats soft paywalls as runtime failures. YouTube enrichment is preserved as extracted link metadata only; no `yt-dlp` or video fetching is added.
 - Dependency check: The implementation uses only Python standard library. If fixture tests later prove stdlib parsing too brittle for real pages, add the smallest possible dependency in a new task after a failing test demonstrates the need.

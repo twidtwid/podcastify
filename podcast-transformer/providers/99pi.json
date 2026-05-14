@@ -1,0 +1,6 @@
+{
+  "id": "99pi",
+  "domains": ["99percentinvisible.org"],
+  "kind": "direct_transcript_link",
+  "transcript_link_contains": "transcript"
+}

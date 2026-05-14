@@ -2,9 +2,9 @@
 """URL ingest for known podcast publisher pages.
 
 This script turns a supported episode URL into the local source files consumed
-by extract_one.py. It intentionally keeps provider configuration small: the
-manifest routes domains to built-in provider kinds and only contains hints that
-tests prove are needed.
+by extract_one.py. It intentionally keeps provider configuration small:
+one JSON file per provider routes domains to built-in provider kinds and only
+contains hints that tests prove are needed.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from typing import Any, Callable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROVIDERS_PATH = REPO_ROOT / "podcast-transformer" / "providers.json"
+PROVIDERS_PATH = REPO_ROOT / "podcast-transformer" / "providers"
 DEFAULT_OUT_ROOT = REPO_ROOT / "podcast-output"
 
 
@@ -30,6 +30,18 @@ class UrlIngestError(RuntimeError):
 
 
 def load_manifest(path: Path = PROVIDERS_PATH) -> dict[str, Any]:
+    if path.is_dir():
+        providers: list[dict[str, Any]] = []
+        for provider_path in sorted(path.glob("*.json")):
+            with provider_path.open("r", encoding="utf-8") as fh:
+                provider = json.load(fh)
+            if not isinstance(provider, dict):
+                raise UrlIngestError(f"Invalid provider manifest: {provider_path}")
+            providers.append(provider)
+        if not providers:
+            raise UrlIngestError(f"No provider manifests found in: {path}")
+        return {"providers": providers}
+
     with path.open("r", encoding="utf-8") as fh:
         manifest = json.load(fh)
     if not isinstance(manifest.get("providers"), list):
