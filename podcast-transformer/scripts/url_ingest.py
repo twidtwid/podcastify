@@ -296,9 +296,49 @@ def _is_real_speaker_line(line: str) -> bool:
     return prefix not in _TRANSCRIPT_METADATA_PREFIXES
 
 
+def _find_dialog_start(lines: list[str]) -> int | None:
+    """Find the first line where a real conversation begins.
+
+    A single line whose shape matches `Speaker: text` is not enough — paper
+    titles ("Just Think: The Challenges Of The Disengaged Mind") and
+    publisher headlines ("TARGET ARTICLE: ...") match the same shape but
+    are one-off references buried in show-notes citations on the
+    FoundMyFitness page. Real dialog has the SAME speaker reappear within a
+    short window. Require the candidate line's colon-prefix to repeat at
+    least twice in the next 50 lines.
+    """
+    for i, line in enumerate(lines):
+        if not _is_real_speaker_line(line):
+            continue
+        prefix = line.split(":", 1)[0].strip().lower()
+        same_prefix = 0
+        for follow in lines[i + 1 : i + 51]:
+            if not _is_real_speaker_line(follow):
+                continue
+            if follow.split(":", 1)[0].strip().lower() == prefix:
+                same_prefix += 1
+                if same_prefix >= 2:
+                    return i
+    return None
+
+
+# An inline `[HH:MM:SS]` or `[MM:SS]` marker dropped mid-paragraph by the
+# publisher's transcript (the New Yorker's S3 transcripts sprinkle one
+# every ~60 seconds even though the surrounding sentence is mid-thought).
+# Cosmetic noise once we have proper turn anchoring — strip when cleaning
+# the raw transcript so the rendered prose flows instead of having
+# `[00:11:00] insane,` litter mid-sentence.
+_INLINE_TIMESTAMP_RE = re.compile(r"\s*\[\d{1,2}:\d{2}(?::\d{2})?\]\s*")
+
+
+def _strip_inline_timestamps(line: str) -> str:
+    cleaned = _INLINE_TIMESTAMP_RE.sub(" ", line)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
 def text_or_html_to_transcript(body: str) -> str:
     text = html_to_text(body) if "<" in body and ">" in body else body
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = [_strip_inline_timestamps(line.strip()) for line in text.splitlines() if line.strip()]
 
     # Find the first line that looks like a speaker turn. Page chrome (nav
     # links, "skip to content", "you are using an outdated browser", schema
@@ -307,10 +347,7 @@ def text_or_html_to_transcript(body: str) -> str:
     # chrome out of the 99pi/Tim Ferriss outputs without touching the New
     # Yorker (plain-text S3 file, already clean) or FoundMyFitness (uses
     # extract_transcript_section, not this function) flows.
-    speaker_start = next(
-        (i for i, line in enumerate(lines) if _is_real_speaker_line(line)),
-        None,
-    )
+    speaker_start = _find_dialog_start(lines)
     if speaker_start is None:
         # Fall back to dropping lines matching known chrome markers.
         lines = [
@@ -489,6 +526,16 @@ def extract_transcript_section(html_text: str) -> str:
             break
         if line.strip():
             transcript_lines.append(line.strip())
+    # The "Transcription" heading on a FoundMyFitness page sits ABOVE the
+    # show notes / chapter timeline AND the references list. The simple
+    # "everything after the heading" capture above includes 350+ lines of
+    # citations and chapter timestamps as if they were transcript. Trim
+    # leading non-speaker lines so the first kept line is a real speaker
+    # turn — and require it to repeat (paper titles like "Just Think:"
+    # match the speaker shape once but never recur).
+    speaker_start = _find_dialog_start(transcript_lines)
+    if speaker_start is not None:
+        transcript_lines = transcript_lines[speaker_start:]
     transcript = "\n".join(transcript_lines).strip()
     if not transcript:
         raise UrlIngestError("Transcript section was found but contained no transcript text")
@@ -577,21 +624,53 @@ def extract_substack_speaker_map(html_text: str) -> dict[str, str]:
     return speaker_map
 
 
+def _segment_speaker(segment: dict[str, Any]) -> str:
+    """Pick the speaker label for a Substack-shape transcription.json segment.
+
+    Real Substack payloads put the speaker on individual word entries inside
+    `words`, not on the segment itself, so a naive `segment.get("speaker")`
+    returns None and every segment collapses to the literal "SPEAKER"
+    fallback. Read it from the first labeled word and fall back to the
+    explicit segment-level field for older / non-Substack shapes.
+    """
+    explicit = segment.get("speaker") or segment.get("speaker_label")
+    if explicit:
+        return str(explicit)
+    for word in segment.get("words") or []:
+        if isinstance(word, dict) and word.get("speaker"):
+            return str(word["speaker"])
+    return "SPEAKER"
+
+
 def substack_json_to_transcript(data: Any, speaker_map: dict[str, str]) -> str:
+    """Render a Substack transcription.json into `Speaker: text` lines.
+
+    Merges consecutive same-speaker segments into a single turn. The raw
+    payload chunks a single speaker's monologue across dozens of ~3-second
+    segments (one per sentence); without merging, the transcript browser
+    re-tags every sentence with the speaker name, drowning the page in
+    `Eric Ries: ...` repetitions instead of one labeled turn followed by
+    flowing prose.
+    """
     raw_segments = data
     if isinstance(data, dict):
         raw_segments = data.get("segments") or data.get("transcript") or []
-    lines: list[str] = []
+    turns: list[tuple[str, list[str]]] = []
     for segment in raw_segments:
         if not isinstance(segment, dict):
             continue
-        speaker_key = clean_text(str(segment.get("speaker") or segment.get("speaker_label") or "SPEAKER"))
+        speaker_key = clean_text(_segment_speaker(segment))
         speaker = speaker_map.get(speaker_key, speaker_key)
         text = clean_text(str(segment.get("text") or ""))
-        if text:
-            lines.append(f"{speaker}: {text}")
-    if not lines:
+        if not text:
+            continue
+        if turns and turns[-1][0] == speaker:
+            turns[-1][1].append(text)
+        else:
+            turns.append((speaker, [text]))
+    if not turns:
         raise UrlIngestError("Substack transcription JSON contained no transcript segments")
+    lines = [f"{speaker}: {' '.join(chunks).strip()}" for speaker, chunks in turns]
     return "\n".join(lines) + "\n"
 
 
