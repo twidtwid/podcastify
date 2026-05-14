@@ -48,6 +48,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Optional
 
@@ -81,6 +82,38 @@ def resolve_episode_dir(out_root: Path, slug: str) -> Path:
     if not episode_dir.is_relative_to(root):
         raise ValueError(f"Episode dir escaped output root: {episode_dir}")
     return episode_dir
+
+
+def is_http_url(value: str) -> bool:
+    parsed = urllib.parse.urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def prepare_source_input(args: argparse.Namespace) -> tuple[Path, Path | None]:
+    source_value = str(args.source_file)
+    if not is_http_url(source_value):
+        return Path(source_value), None
+    cmd = [
+        sys.executable,
+        str(SCRIPTS / "url_ingest.py"),
+        source_value,
+        "--out-root",
+        str(args.out_root),
+    ]
+    if args.slug:
+        cmd.extend(["--slug", args.slug])
+    result = run(cmd)
+    stdout = result.stdout.decode("utf-8", errors="replace").strip()
+    episode_dir = Path(stdout.splitlines()[-1]) if stdout else resolve_episode_dir(args.out_root, args.slug)
+    source_input = episode_dir / "source" / "_source_input.txt"
+    if not source_input.exists():
+        raise StepError(f"URL ingest did not create expected source file: {source_input}")
+    return source_input, episode_dir
+
+
+def has_prepared_transcript(episode_dir: Path) -> bool:
+    transcript = episode_dir / "source" / "user-provided-transcript.txt"
+    return transcript.exists() and transcript.stat().st_size > 0
 
 
 def run(cmd: list[str], *, episode_dir: Optional[Path] = None,
@@ -258,7 +291,7 @@ def extract_substack_section(raw_path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("source_file", type=Path)
+    p.add_argument("source_file")
     p.add_argument("--out-root", type=Path, default=REPO_ROOT / "podcast-output")
     p.add_argument("--slug", default=None)
     p.add_argument("--skip-fetch", action="store_true",
@@ -292,16 +325,19 @@ def main(argv: list[str] | None = None) -> int:
         print_config()
         return 0
 
-    if not args.source_file.is_file():
-        print(f"ERROR: source file not found: {args.source_file}", file=sys.stderr)
+    source_file, prepared_episode_dir = prepare_source_input(args)
+    if prepared_episode_dir is None and not source_file.is_file():
+        print(f"ERROR: source file not found: {source_file}", file=sys.stderr)
         return 2
 
     # 1. Slug derivation (fast, runs outside the instrumented pipeline)
     slug = args.slug
+    if prepared_episode_dir is not None and not slug:
+        slug = prepared_episode_dir.name
     if not slug:
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "parse_source.py"),
-             str(args.source_file), "/tmp/_slug_probe", "--print-slug"],
+             str(source_file), "/tmp/_slug_probe", "--print-slug"],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
@@ -314,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
-    if episode_dir.exists() and not args.keep_existing:
+    if episode_dir.exists() and not args.keep_existing and episode_dir != prepared_episode_dir:
         shutil.rmtree(episode_dir)
     episode_dir.mkdir(parents=True, exist_ok=True)
     (episode_dir / "source").mkdir(exist_ok=True)
@@ -326,13 +362,13 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Episode dir: {episode_dir}", file=sys.stderr)
     print(f"Slug:        {slug}", file=sys.stderr)
-    print(f"Source:      {args.source_file}", file=sys.stderr)
+    print(f"Source:      {source_file}", file=sys.stderr)
     print("-" * 60, file=sys.stderr)
 
     # ── 1. parse_source ───────────────────────────────────────────────
     step("parse_source", "script", episode_dir, lambda: run(
         [sys.executable, str(SCRIPTS / "parse_source.py"),
-         str(args.source_file), str(episode_dir)],
+         str(source_file), str(episode_dir)],
     ))
 
     parsed = json.loads((episode_dir / "working" / "_parsed.json").read_text(encoding="utf-8"))
@@ -346,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
     # browse-cli scrape, used downstream by sidecar_init.
     captured_title = {"value": ""}
 
-    if parsed.get("inline_transcript"):
+    if parsed.get("inline_transcript") or has_prepared_transcript(episode_dir):
         # ingest_combined-style inline transcript already extracted
         pass
     else:

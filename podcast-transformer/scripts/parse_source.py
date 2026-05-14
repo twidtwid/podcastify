@@ -299,8 +299,10 @@ def main(argv: list[str] | None = None) -> int:
     (ep / "working").mkdir(parents=True, exist_ok=True)
     (ep / "final").mkdir(parents=True, exist_ok=True)
 
-    # Preserve the original input
-    shutil.copyfile(args.input_file, ep / "source" / "_source_input.txt")
+    # Preserve the original input unless URL ingest already created this file.
+    dest_source = ep / "source" / "_source_input.txt"
+    if args.input_file.resolve() != dest_source.resolve():
+        shutil.copyfile(args.input_file, dest_source)
 
     parsed = {
         "input_file": str(args.input_file.resolve()),

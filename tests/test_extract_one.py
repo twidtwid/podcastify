@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import shutil
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -16,6 +19,7 @@ def load_extract_one():
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {EXTRACT_ONE}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -49,6 +53,47 @@ class ExtractOneSafetyTests(unittest.TestCase):
                     "https://example.com/episode",
                     Path("/tmp/podcastify-test-output/source/transcript_raw.txt"),
                 )
+
+    def test_is_http_url_detects_only_http_and_https(self) -> None:
+        self.assertTrue(self.extract_one.is_http_url("https://example.com/episode"))
+        self.assertTrue(self.extract_one.is_http_url("http://example.com/episode"))
+        self.assertFalse(self.extract_one.is_http_url("/tmp/source.txt"))
+        self.assertFalse(self.extract_one.is_http_url("file:///tmp/source.txt"))
+
+    def test_prepare_source_input_leaves_local_files_unchanged(self) -> None:
+        args = argparse.Namespace(
+            source_file="/tmp/source.txt",
+            out_root=Path("/tmp/out"),
+            slug=None,
+        )
+        self.assertEqual(
+            self.extract_one.prepare_source_input(args),
+            (Path("/tmp/source.txt"), None),
+        )
+
+    def test_prepare_source_input_runs_url_ingest_and_returns_generated_source(self) -> None:
+        args = argparse.Namespace(
+            source_file="https://www.lennysnewsletter.com/p/how-to-build-a-company-that-withstands",
+            out_root=Path("/tmp/out"),
+            slug="lenny-test",
+        )
+        completed = mock.Mock()
+        completed.stdout = b"/tmp/out/lenny-test\n"
+        expected = Path("/tmp/out/lenny-test/source/_source_input.txt")
+        with mock.patch.object(self.extract_one, "run", return_value=completed) as run_mock:
+            with mock.patch.object(Path, "exists", return_value=True):
+                source, prepared_dir = self.extract_one.prepare_source_input(args)
+        self.assertEqual(source, expected)
+        self.assertEqual(prepared_dir, Path("/tmp/out/lenny-test"))
+        run_mock.assert_called_once()
+        self.assertIn("url_ingest.py", run_mock.call_args.args[0][1])
+
+    def test_should_skip_fetch_when_prepared_transcript_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "source" / "user-provided-transcript.txt"
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text("HOST: Hello\nGUEST: Hi\n", encoding="utf-8")
+            self.assertTrue(self.extract_one.has_prepared_transcript(Path(tmp)))
 
 
 if __name__ == "__main__":
