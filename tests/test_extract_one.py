@@ -79,14 +79,31 @@ class ExtractOneSafetyTests(unittest.TestCase):
         )
         completed = mock.Mock()
         completed.stdout = b"/tmp/out/lenny-test\n"
-        expected = Path("/tmp/out/lenny-test/source/_source_input.txt")
+        expected_dir = Path("/tmp/out/lenny-test").resolve()
+        expected = expected_dir / "source" / "_source_input.txt"
         with mock.patch.object(self.extract_one, "run", return_value=completed) as run_mock:
             with mock.patch.object(Path, "exists", return_value=True):
                 source, prepared_dir = self.extract_one.prepare_source_input(args)
         self.assertEqual(source, expected)
-        self.assertEqual(prepared_dir, Path("/tmp/out/lenny-test"))
+        self.assertEqual(prepared_dir, expected_dir)
         run_mock.assert_called_once()
         self.assertIn("url_ingest.py", run_mock.call_args.args[0][1])
+
+    def test_prepare_source_input_resolves_url_ingest_stdout_path(self) -> None:
+        args = argparse.Namespace(
+            source_file="https://www.lennysnewsletter.com/p/how-to-build-a-company-that-withstands",
+            out_root=Path("/tmp/out"),
+            slug="lenny-test",
+        )
+        completed = mock.Mock()
+        completed.stdout = b"/tmp/out/lenny-test\n"
+        expected_dir = Path("/tmp/out/lenny-test").resolve()
+        expected_source = expected_dir / "source" / "_source_input.txt"
+        with mock.patch.object(self.extract_one, "run", return_value=completed):
+            with mock.patch.object(Path, "exists", return_value=True):
+                source, prepared_dir = self.extract_one.prepare_source_input(args)
+        self.assertEqual(source, expected_source)
+        self.assertEqual(prepared_dir, expected_dir)
 
     def test_should_skip_fetch_when_prepared_transcript_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

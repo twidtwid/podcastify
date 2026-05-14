@@ -137,7 +137,7 @@ def sharpen_topic(model: str, claim: dict, num_ctx: int) -> str | None:
         return None
     # Sanity-check length
     wc = len(new_topic.split())
-    if wc < 4 or wc > 14:
+    if wc < 4 or wc > 12:
         return None
     # Subject-preservation check: the new topic must share at least one
     # significant word with either the original topic or the body.

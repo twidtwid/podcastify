@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
 
     chapters = load_chapters_from_parsed(parsed_path)
     if not chapters:
-        print("WARN: parsed JSON had no chapters; sidecar untouched.", file=sys.stderr)
+        print("INFO: parsed JSON had no chapters; sidecar untouched.", file=sys.stderr)
         return 0
 
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
