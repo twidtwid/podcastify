@@ -10,8 +10,9 @@ total wall-clock plus the script-vs-LLM split.
 
 Pipeline (subprocess calls, all instrumented via pipeline_log.py):
 
+   0. url_ingest                for supported URLs, assemble source package
    1. parse_source              derive metadata, chapters, links, slug
-   2. fetch_transcript          browse-cli the canonical URL (skip if inline)
+   2. fetch_transcript          advanced browse-cli fallback (skip if prepared)
    3. capture_article_title     pull canonical title before trim
    4. trim_substack_article_body
    5. convert_transcript        scrape format → canonical Speaker: text

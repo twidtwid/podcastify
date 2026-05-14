@@ -1,16 +1,16 @@
 ---
 name: podcastextract
-description: Turn a podcast resource text file (canonical URL + chapter timeline + show-notes link list) into a self-contained research package — verified transcript, sidecar with chapters and entity terminology, and two rendered HTML artifacts (a briefing and an annotated transcript). Use when the user invokes "/podcastextract <path>", asks Codex to use the podcastextract skill on a file, drops a podcast resource file, or asks to "extract", "process", "build a briefing for", or "make HTML pages from" a podcast episode. Out of scope: transcribing raw audio (the user must supply a transcript or a publisher URL the pipeline can scrape), hand-authoring per-episode HTML (re-render via the pipeline), or publishing outputs to external services.
+description: Turn a podcast episode URL or resource text file into a self-contained research package — verified transcript, sidecar with chapters and entity terminology, and two rendered HTML artifacts (a briefing and an annotated transcript). Use when the user invokes "/podcastextract <url-or-path>", asks Codex to use the podcastextract skill on a podcast URL or file, drops a podcast resource file, or asks to "extract", "process", "build a briefing for", or "make HTML pages from" a podcast episode. Out of scope: transcribing raw audio (the user must supply a transcript or a publisher URL the pipeline can scrape), hand-authoring per-episode HTML (re-render via the pipeline), or publishing outputs to external services.
 ---
 
 # podcastextract
 
-Turn one resource text file into a research package the user can read in five minutes and reference forever. The HTML pages are the artifact — not a preview of a different canonical document. Run fully local via Ollama by default.
+Turn one supported episode URL or resource text file into a research package the user can read in five minutes and reference forever. The HTML pages are the artifact — not a preview of a different canonical document. Run fully local via Ollama by default.
 
 ## When to invoke
 
-- User types `/podcastextract <path>` in Claude Code.
-- User asks Codex to use the `podcastextract` skill on a file path.
+- User types `/podcastextract <url-or-path>` in Claude Code.
+- User asks Codex to use the `podcastextract` skill on a podcast URL or file path.
 - User drops a path to a `.txt` containing a canonical URL + show notes + chapter timeline and asks to extract / process / build / render.
 - User says "make a briefing for this podcast" / "build me HTML for the Eric Ries episode" / "run the podcast pipeline on this".
 
@@ -21,9 +21,17 @@ Do not invoke when:
 
 ## Input
 
-The resource file should contain (in any order):
+Preferred input is a supported publisher episode URL. V1 supports:
 
-- A **canonical URL** for the episode. Substack URLs work today (transcript is fetched via `browse-cli`). Other publishers need a pre-supplied transcript at `source/user-provided-transcript.txt` and `--skip-fetch`.
+- Lenny's Newsletter/Substack
+- The New Yorker Radio Hour
+- FoundMyFitness
+- 99% Invisible
+- The Tim Ferriss Show
+
+Local resource files are still supported. The resource file should contain (in any order):
+
+- A **canonical URL** for the episode.
 - A **chapter timeline** — markdown bullets like `(00:00) Introduction` or `- [00:02:26] Topic`.
 - A **show-notes link list** — `• Label: https://...` lines for canonical entity URLs (people, books, companies).
 - Anything else is ignored.
@@ -40,13 +48,9 @@ Before running, confirm:
    ```
    If either is missing, ask the user to `ollama pull <model>` and try again. Don't try to install for them.
 
-2. **browse-cli is on PATH** and initialized:
-   ```bash
-   which browse && browse --version
-   ```
-   If missing, instruct: `brew install pepijnsenders/tap/browse && browse init`.
-
-3. **The source file exists** at the path the user gave.
+2. **The input is usable**:
+   - URLs must be from a supported publisher page.
+   - Local resource files must exist at the path the user gave.
 
 If any check fails, surface the specific failure with the fix command. Do not proceed.
 
@@ -88,8 +92,9 @@ Every successful run must satisfy:
 
 | # | Step                              | Kind   | What it does                                                          |
 |--:|-----------------------------------|--------|-----------------------------------------------------------------------|
+|  0 | `url_ingest.py`                   | code   | For supported URLs, fetch page/transcript and create the local source package. |
 |  1 | `parse_source.py`                 | code   | URL ranking, chapter extraction, host/guest/title heuristics, link list. |
-|  2 | `fetch_transcript` (browse-cli)   | code   | Scrape the canonical URL (Substack: appends `?showTranscript=true`).  |
+|  2 | `fetch_transcript` fallback       | code   | Advanced fallback only when no transcript was prepared. |
 |  3 | `convert_transcript.py`           | code   | Substack timestamp+name+body blocks → `Speaker: text` canonical form. |
 |  4 | `sidecar.py init`                 | code   | Bootstrap `metadata.sidecar.json` with episode metadata.              |
 |  5 | `sidecar_chapters.py`             | code   | Populate `episode.chapters` from the parsed timeline.                 |
@@ -107,11 +112,11 @@ End-to-end wall-clock on a typical 1h40m episode: **~3 minutes** on an M-series 
 
 What the agent does when invoked:
 
-1. **Resolve `$ARGUMENTS` to an absolute path.** If empty or non-existent, ask the user for the file.
+1. **Resolve `$ARGUMENTS` to a URL or absolute path.** If empty, ask the user for the episode URL or resource file.
 2. **Run prerequisite checks** (see Prerequisites above). Stop with a specific fix if anything fails.
 3. **Run the pipeline:**
    ```bash
-   python3 podcast-transformer/scripts/extract_one.py "$PATH"
+   python3 podcast-transformer/scripts/extract_one.py "$INPUT"
    ```
 4. **Read the scorecard** from stderr (or `podcast-output/<slug>/working/_pipeline_metrics.jsonl` for the detailed split).
 5. **Validate the bar** (see The bar above). If any check fails, report which step failed and stop. Don't paper over it.
@@ -127,13 +132,16 @@ Keep the report short. The artifact is the deliverable, not the chat message.
 
 - **Draft has <6 takeaways or <6 claims** → re-run `draft_notes.py --force` once. The model is stochastic and occasionally produces thin output.
 - **Ollama call timed out** → check `ollama ps` for stuck loads; restart `ollama serve` if needed. Don't switch backends silently.
+- **URL ingest reports unsupported domain** → ask the user for a local resource file or transcript and continue with the file-based workflow.
+- **URL ingest found metadata but no transcript** → ask the user for the transcript text/file, or use a rendered-DOM fallback only if the user wants to debug that provider.
+- **Direct HTTP misses rendered transcript content** → prefer a rendered-DOM fallback in this order: Chrome headless `--dump-dom`, local Playwright, Browserless `/smart-scrape` if `BROWSERLESS_TOKEN` is available, Browserless BrowserQL for selector or network-response capture, Firecrawl scrape if `FIRECRAWL_API_KEY` is available, Browser Use Cloud CDP if `BROWSER_USE_API_KEY` is available, then `browse-cli` for users who already have it configured.
 - **`browse-cli` returned <1000 bytes** → the user probably isn't signed into the publisher site in their default browser. Tell them to open the URL in Chrome and confirm the transcript loads, then retry.
 - **JSON parse error in a model output** → `draft_notes.extract_json` already attempts a repair for the common "missing `}` before `]`" case. If repair fails, the raw output is saved to `working/_*_draft_raw.txt` for inspection.
 - **Validator flags AI slop** → the renderer's banned-text guard fired (e.g. "TOPIC LENSES", "AT A GLANCE", "Built for", left-handle accent bars). Fix the renderer in `podcast-transformer/assets/podcast-html/`, don't suppress the check.
 
 ## Anti-patterns
 
-- **Don't echo the transcript back through a `Write` call.** The user already has the bytes; the pipeline pulls via `browse-cli` directly. Echoing a 100KB transcript through tool input takes minutes and bloats the conversation.
+- **Don't echo the transcript back through a `Write` call.** The user already has the bytes; URL ingest or local files should create `source/user-provided-transcript.txt`. Echoing a 100KB transcript through tool input takes minutes and bloats the conversation.
 - **Don't hand-author per-episode HTML.** The renderer is one file. Update assets in `podcast-transformer/assets/podcast-html/` and re-run.
 - **Don't second-guess user-provided inputs.** A user transcript means skip transcription. User-supplied speaker names mean don't re-verify against voice characteristics. User `episode.notes.json` means trust its claims.
 - **Don't switch backends silently.** If Ollama is down, surface the error with the fix. Don't fail over to a paid API the user didn't ask for.
