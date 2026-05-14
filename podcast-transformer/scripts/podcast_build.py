@@ -105,6 +105,16 @@ def parse_speaker_turns(text: str) -> list[dict[str, Any]]:
     return turns
 
 
+def annotate_speaker_visibility(turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mark speaker labels for display only when the speaker changes."""
+    previous = None
+    for turn in turns:
+        speaker = turn.get("speaker") or ""
+        turn["show_speaker"] = speaker != previous
+        previous = speaker
+    return turns
+
+
 def find_turn(turns: list[dict[str, Any]], query: str, start: int = 0, allow_wrap: bool = True) -> int | None:
     if not query:
         return None
@@ -222,7 +232,7 @@ def build_package(episode_dir: Path) -> dict[str, Any]:
     notes_path = episode_dir / "source" / "episode.notes.json"
     notes = read_json(notes_path) if notes_path.exists() else {}
     transcript_path = resolve_transcript_path(episode_dir, sidecar)
-    turns = parse_speaker_turns(transcript_path.read_text(encoding="utf-8"))
+    turns = annotate_speaker_visibility(parse_speaker_turns(transcript_path.read_text(encoding="utf-8")))
     chapters = build_chapters(sidecar, notes, turns)
     keywords = build_keywords(notes, chapters, turns)
     terms = sidecar.get("verification", {}).get("terminology", [])

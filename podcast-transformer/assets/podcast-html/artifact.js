@@ -322,9 +322,10 @@ const PodcastArtifacts = (() => {
           </section>`);
       });
       const kind = hostSet.has(turn.speaker) ? "host" : "guest";
+      const speakerLabel = turn.show_speaker === false ? "" : `<span class="speaker">${esc(turn.speaker)}</span>`;
       body.push(`
         <article class="turn" id="${esc(turn.id)}" data-speaker="${esc(turn.speaker)}" data-speaker-kind="${kind}" data-search="${esc(`${turn.speaker} ${turn.text}`.toLowerCase())}">
-          <p><span class="speaker">${esc(turn.speaker)}</span>${esc(turn.text)}</p>
+          <p>${speakerLabel}${esc(turn.text)}</p>
         </article>`);
     });
 
