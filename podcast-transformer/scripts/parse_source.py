@@ -339,14 +339,14 @@ def main(argv: list[str] | None = None) -> int:
             seen.add(u)
             ordered_urls.append(u)
     sorted_urls = sorted(ordered_urls, key=rank_url)
-    canonical_url = sorted_urls[0] if sorted_urls else ""
+    bundle_meta = parse_bundle_metadata(text)
+    canonical_url = bundle_meta.get("canonical url") or (sorted_urls[0] if sorted_urls else "")
     youtube_url = next((u for u in ordered_urls if "youtube.com" in u or "youtu.be" in u), "")
     apple_url = next((u for u in ordered_urls if "podcasts.apple.com" in u), "")
 
     chapters = extract_chapters(text)
     links = extract_links(text)
     transcript = extract_inline_transcript(text)
-    bundle_meta = parse_bundle_metadata(text)
     bundle_title = bundle_meta.get("title", "")
     # Host/guest resolution happens in a downstream LLM step
     # (`resolve_speakers.py`); parse_source only forwards whatever the bundle
