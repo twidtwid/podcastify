@@ -32,7 +32,14 @@ class UrlIngestManifestTests(unittest.TestCase):
         ids = {provider["id"] for provider in manifest["providers"]}
         self.assertEqual(
             ids,
-            {"lenny_substack", "new_yorker", "foundmyfitness", "tim_blog", "99pi"},
+            {
+                "lenny_substack",
+                "new_yorker",
+                "foundmyfitness",
+                "tim_blog",
+                "99pi",
+                "conversations_with_tyler",
+            },
         )
 
     def test_provider_manifest_is_one_file_per_provider(self) -> None:
@@ -41,6 +48,7 @@ class UrlIngestManifestTests(unittest.TestCase):
             files,
             [
                 "99pi.json",
+                "conversations_with_tyler.json",
                 "foundmyfitness.json",
                 "lenny_substack.json",
                 "new_yorker.json",
@@ -95,6 +103,25 @@ class UrlIngestScaffoldTests(unittest.TestCase):
 
         self.assertEqual(path, episode_dir / "working" / "fetches" / "page.html")
         self.assertEqual(path.read_text(encoding="utf-8"), "<html><h1>Episode</h1></html>")
+
+    def test_fetch_once_allows_normal_pages_with_form_noscript_javascript_warning(self) -> None:
+        episode_dir = self.out_root / "episode"
+
+        def fake_fetcher(url: str) -> tuple[int, str, bytes]:
+            return (
+                200,
+                "text/html; charset=utf-8",
+                b"<html><body><article><h1>Episode</h1><noscript>Please enable JavaScript in your browser to complete this form.</noscript></article></body></html>",
+            )
+
+        path = self.url_ingest.fetch_once(
+            "https://example.com/episode",
+            episode_dir,
+            "page.html",
+            fetcher=fake_fetcher,
+        )
+
+        self.assertIn("<article>", path.read_text(encoding="utf-8"))
 
     def test_write_bundle_creates_output_contract(self) -> None:
         bundle = self.url_ingest.SourceBundle(
@@ -390,6 +417,33 @@ class UrlIngestArticleTranscriptProviderTests(unittest.TestCase):
         self.assertEqual(provenance["chapters"][0], {"time": "00:00", "title": "Introduction"})
         source_input = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
         self.assertIn("Date: 2026-03-24", source_input)
+
+    def test_conversations_with_tyler_inline_transcript_writes_bundle(self) -> None:
+        url = "https://conversationswithtyler.com/episodes/craig-newmark/"
+        episode_dir = self.url_ingest.ingest_url(
+            url,
+            self.out_root,
+            fetcher=self.fixture_fetcher(
+                {url: self.fixtures / "conversations_with_tyler" / "page.html"}
+            ),
+        )
+
+        transcript = (episode_dir / "source" / "user-provided-transcript.txt").read_text(encoding="utf-8")
+        self.assertTrue(transcript.startswith("TYLER COWEN: Craig, hello. Welcome."))
+        self.assertIn("COWEN: Today I'm here with Craig Newmark.", transcript)
+        self.assertIn("NEWMARK: Customer service is a big deal.", transcript)
+        self.assertNotIn("Thanks to an anonymous listener", transcript)
+
+        source_input = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
+        self.assertIn("Podcast: Conversations with Tyler", source_input)
+        self.assertIn("Host: Tyler Cowen", source_input)
+        self.assertIn("Date: 2026-04-29", source_input)
+        self.assertIn("https://www.youtube.com/watch?v=pZMuKkH92fo", source_input)
+        self.assertNotIn("https://www.youtube.com/playlist", source_input)
+
+        provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
+        self.assertEqual(provenance["provider_id"], "conversations_with_tyler")
+        self.assertEqual(provenance["metadata"]["date"], "2026-04-29")
 
 
 class UrlIngestSubstackProviderTests(unittest.TestCase):

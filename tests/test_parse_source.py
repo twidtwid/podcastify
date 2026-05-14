@@ -39,6 +39,33 @@ class ParseSourceSameFileTests(unittest.TestCase):
             self.assertEqual(parse_source.main([str(source_input), str(episode_dir)]), 0)
             self.assertTrue((episode_dir / "working" / "_parsed.json").exists())
 
+    def test_url_ingest_bundle_canonical_url_beats_platform_links(self) -> None:
+        parse_source = load_parse_source()
+        with tempfile.TemporaryDirectory() as tmp:
+            episode_dir = Path(tmp) / "episode"
+            source_dir = episode_dir / "source"
+            source_dir.mkdir(parents=True)
+            source_input = source_dir / "_source_input.txt"
+            source_input.write_text(
+                "Canonical URL: https://conversationswithtyler.com/episodes/craig-newmark/\n"
+                "Title: Craig Newmark on Institutional Maintenance\n"
+                "Podcast: Conversations with Tyler\n"
+                "Host: Tyler Cowen\n"
+                "\n"
+                "Links:\n"
+                "- YouTube episode: https://www.youtube.com/watch?v=pZMuKkH92fo\n"
+                "- Apple: https://podcasts.apple.com/us/podcast/conversations-with-tyler/id983795625\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(parse_source.main([str(source_input), str(episode_dir)]), 0)
+
+            parsed = (episode_dir / "working" / "_parsed.json").read_text(encoding="utf-8")
+            self.assertIn(
+                '"canonical_url": "https://conversationswithtyler.com/episodes/craig-newmark/"',
+                parsed,
+            )
+
 
 class ExtractInlineTranscriptTests(unittest.TestCase):
     """Regression coverage for the metadata-stomp bug.

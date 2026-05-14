@@ -116,6 +116,21 @@ def default_fetcher(url: str) -> tuple[int, str, bytes]:
     return status, content_type, body
 
 
+def is_interstitial_body(body: bytes) -> bool:
+    lower = body.lower()
+    if b"access denied" in lower:
+        return True
+    if b"enable javascript" not in lower:
+        return False
+    content_markers = (
+        b"<article",
+        b"<h1",
+        b"og:title",
+        b"<p",
+    )
+    return not any(marker in lower for marker in content_markers)
+
+
 def fetch_once(
     url: str,
     episode_dir: Path,
@@ -131,7 +146,7 @@ def fetch_once(
     status, _content_type, body = fetcher(url)
     if status >= 400:
         raise UrlIngestError(f"Fetch blocked or failed for {url}: HTTP {status}")
-    if b"enable javascript" in body.lower() or b"access denied" in body.lower():
+    if is_interstitial_body(body):
         raise UrlIngestError(f"Fetch blocked for {url}: interstitial response detected")
     path.write_bytes(body)
     return path
@@ -305,6 +320,13 @@ def _is_real_speaker_line(line: str) -> bool:
     return _speaker_prefix(line) is not None
 
 
+def _speaker_alias(prefix: str) -> str:
+    if re.match(r"^SPEAKER[_ -]?\d{1,3}$", prefix, re.IGNORECASE):
+        return prefix.lower()
+    tokens = prefix.replace(".", "").split()
+    return tokens[-1].lower() if tokens else prefix.lower()
+
+
 def _find_dialog_start(lines: list[str]) -> int | None:
     """Find the first line where a real conversation begins.
 
@@ -319,14 +341,15 @@ def _find_dialog_start(lines: list[str]) -> int | None:
         prefix = _speaker_prefix(line)
         if not prefix:
             continue
-        speakers = [prefix.lower()]
+        alias = _speaker_alias(prefix)
+        speakers = [alias]
         for follow in lines[i + 1 : i + 51]:
             follow_prefix = _speaker_prefix(follow)
             if follow_prefix:
-                speakers.append(follow_prefix.lower())
+                speakers.append(_speaker_alias(follow_prefix))
         if len(speakers) < 3:
             continue
-        if speakers.count(prefix.lower()) >= 2:
+        if speakers.count(alias) >= 2:
             return i
     return None
 
@@ -470,10 +493,20 @@ def select_transcript_link(
     return candidates[0][1]
 
 
-def metadata_from_page(html_text: str) -> dict[str, str]:
+def metadata_from_page(html_text: str, *, prefer_visible_time_date: bool = False) -> dict[str, str]:
     metadata: dict[str, str] = {}
+    if prefer_visible_time_date:
+        visible_time_match = re.search(
+            r"<time\b[^>]*>(.*?)</time>",
+            html_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if visible_time_match:
+            date = extract_natural_page_date(strip_tags(visible_time_match.group(1)))
+            if date:
+                metadata["date"] = date
     time_match = re.search(r"<time\b[^>]*datetime=[\"']([^\"']+)[\"']", html_text, re.IGNORECASE)
-    if time_match:
+    if time_match and "date" not in metadata:
         metadata["date"] = clean_text(time_match.group(1))
     if "date" not in metadata:
         meta_match = re.search(
@@ -516,7 +549,7 @@ def extract_natural_page_date(text: str) -> str:
     text = re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", text, flags=re.IGNORECASE)
     text = clean_text(text)
     match = re.search(
-        r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\s+(\d{4})\b",
+        r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})\b",
         text,
         re.IGNORECASE,
     )
@@ -612,6 +645,40 @@ def useful_links(links: list[dict[str, str]]) -> list[dict[str, str]]:
     return keep
 
 
+def filter_links_for_provider(
+    links: list[dict[str, str]],
+    provider: dict[str, Any],
+) -> list[dict[str, str]]:
+    exclude_substrings = [
+        value.lower()
+        for value in provider.get("link_exclude_url_contains", [])
+        if isinstance(value, str) and value
+    ]
+    if not exclude_substrings:
+        return links
+    return [
+        link for link in links
+        if not any(excluded in (link.get("url") or "").lower() for excluded in exclude_substrings)
+    ]
+
+
+def extract_embedded_youtube_links(html_text: str) -> list[dict[str, str]]:
+    links: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for src in re.findall(r"<iframe\b[^>]*\bsrc=[\"']([^\"']+)[\"']", html_text, re.IGNORECASE):
+        src = html.unescape(src)
+        match = re.search(r"https?://(?:www\.)?youtube(?:-nocookie)?\.com/embed/([^?&\"'/]+)", src)
+        if not match:
+            continue
+        video_id = match.group(1)
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        if url in seen:
+            continue
+        seen.add(url)
+        links.append({"url": url, "text": "YouTube episode"})
+    return links
+
+
 def extract_transcript_section(html_text: str) -> str:
     text = html_to_text(html_text)
     lines = text.splitlines()
@@ -621,7 +688,9 @@ def extract_transcript_section(html_text: str) -> str:
             start = index + 1
             break
     if start is None:
-        raise UrlIngestError("Page fetched, but no transcript section heading was found")
+        start = _find_dialog_start(lines)
+        if start is None:
+            raise UrlIngestError("Page fetched, but no transcript section heading was found")
     stop_headings = {"credits", "show notes", "references", "related", "newsletter"}
     transcript_lines: list[str] = []
     for line in lines[start:]:
@@ -640,6 +709,11 @@ def extract_transcript_section(html_text: str) -> str:
     speaker_start = _find_dialog_start(transcript_lines)
     if speaker_start is not None:
         transcript_lines = transcript_lines[speaker_start:]
+    real_speakers = _real_speaker_prefixes(transcript_lines)
+    if real_speakers:
+        speaker_end = _find_dialog_end(transcript_lines, real_speakers)
+        if speaker_end is not None:
+            transcript_lines = transcript_lines[:speaker_end]
     transcript = "\n".join(transcript_lines).strip()
     if not transcript:
         raise UrlIngestError("Transcript section was found but contained no transcript text")
@@ -660,7 +734,10 @@ def ingest_article_with_transcript(
     page_html = page_path.read_text(encoding="utf-8")
     title = strip_title_suffix(extract_title(page_html), provider)
     links = extract_links(page_html, url)
-    page_metadata = metadata_from_page(page_html)
+    page_metadata = metadata_from_page(
+        page_html,
+        prefer_visible_time_date=bool(provider.get("prefer_visible_time_date")),
+    )
     if provider.get("podcast_title"):
         page_metadata.setdefault("podcast_title", provider["podcast_title"])
     if provider.get("host"):
@@ -674,7 +751,12 @@ def ingest_article_with_transcript(
         transcript_text=extract_transcript_section(page_html),
         metadata=page_metadata,
         chapters=extract_chapters(html_to_text(page_html)),
-        links=useful_links(links),
+        links=filter_links_for_provider(
+            extract_embedded_youtube_links(page_html) + useful_links(links)
+            if provider.get("include_embedded_youtube")
+            else useful_links(links),
+            provider,
+        ),
     )
     return write_bundle(bundle, out_root)
 

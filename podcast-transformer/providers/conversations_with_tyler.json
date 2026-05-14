@@ -1,0 +1,15 @@
+{
+  "id": "conversations_with_tyler",
+  "domains": ["conversationswithtyler.com"],
+  "kind": "article_with_transcript",
+  "podcast_title": "Conversations with Tyler",
+  "host": "Tyler Cowen",
+  "prefer_visible_time_date": true,
+  "include_embedded_youtube": true,
+  "link_exclude_url_contains": [
+    "youtube.com/playlist"
+  ],
+  "title_strip_suffix": [
+    "| Conversations with Tyler"
+  ]
+}
