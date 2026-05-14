@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -246,6 +247,26 @@ def call_ollama(model: str, system: str, user: str, num_ctx: int) -> str:
     return payload.get("message", {}).get("content", "")
 
 
+_BARE_STRING_OBJECT_RE = re.compile(
+    r'\{\s*(?:"(?:[^"\\]|\\.)*"\s*,\s*)+"(?:[^"\\]|\\.)*"\s*,?\s*\}'
+)
+
+
+def _repair_bare_string_object_bodies(s: str) -> str:
+    """Rewrite `{ "a", "b", "c" }` (bare strings, no key:value pairs) as
+    `{ "a": "a", "b": "b", "c": "c" }`. gemma4 occasionally emits this
+    shape when it conflates set/array literals with the JSON-object syntax
+    the prompt asks for (most often for `keyword_queries`). Downstream code
+    iterates `.items()`, so promoting each bare string to its own
+    `key: key` pair keeps the contract intact without losing model intent.
+    """
+    def replace_body(match: re.Match[str]) -> str:
+        body = match.group(0)
+        strings = re.findall(r'"(?:[^"\\]|\\.)*"', body)
+        return "{" + ", ".join(f"{s}: {s}" for s in strings) + "}"
+    return _BARE_STRING_OBJECT_RE.sub(replace_body, s)
+
+
 def extract_json(raw: str) -> dict:
     """Strip any prefatory text and parse the JSON object. The system prompt asks
     for raw JSON only, but defensively tolerate a leading markdown fence and
@@ -283,6 +304,18 @@ def extract_json(raw: str) -> dict:
                 return json.loads(repaired)
             except json.JSONDecodeError:
                 pass
+        # Repair 3: object body containing only bare strings (no key:value
+        # pairs). gemma4 emits e.g.
+        #     "keyword_queries": { "OpenAI governance", "Sam Altman shift", ... }
+        # which trips `Expecting ':' delimiter`. Promote each bare string
+        # to its own `"X": "X"` pair.
+        if e.msg.startswith("Expecting ':' delimiter"):
+            repaired = _repair_bare_string_object_bodies(candidate)
+            if repaired != candidate:
+                try:
+                    return json.loads(repaired)
+                except json.JSONDecodeError:
+                    pass
         raise
 
 

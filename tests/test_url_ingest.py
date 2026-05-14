@@ -219,6 +219,63 @@ class UrlIngestHtmlUtilityTests(unittest.TestCase):
         self.assertNotIn("[00:11:00]", transcript)
         self.assertIn("opening thought continuing mid-sentence", transcript)
 
+    def test_dialog_end_drops_tim_blog_footer_legal_block(self) -> None:
+        # tim.blog appends a multi-paragraph legal/comments block after the
+        # final speaker turn. Lines like `LEGAL CONDITIONS:` and `Comment
+        # Rules:` match the `Speaker: text` shape and get picked up as
+        # spurious speakers in the transcript lint speaker list. The footer
+        # speakers each appear exactly once; real dialog speakers recur.
+        text = "\n".join(
+            [
+                "Tim Ferriss: Welcome back to the show.",
+                "Elad Gil: Thanks for having me.",
+                "Tim Ferriss: Let's begin.",
+                "Elad Gil: Sounds great.",
+                "Tim Ferriss: And until next time, thanks for tuning in.",
+                "LEGAL CONDITIONS: Tim Ferriss owns the copyright...",
+                "WHAT IS NOT ALLOWED: No one is authorized...",
+                "Comment Rules: Remember what Fonzie was like? Cool.",
+            ]
+        )
+        transcript = self.url_ingest.text_or_html_to_transcript(text)
+        self.assertNotIn("LEGAL CONDITIONS", transcript)
+        self.assertNotIn("WHAT IS NOT ALLOWED", transcript)
+        self.assertNotIn("Comment Rules", transcript)
+        self.assertIn("thanks for tuning in", transcript)
+
+    def test_dialog_end_drops_99pi_related_episodes_listing(self) -> None:
+        # 99pi appends a related-episodes sidebar after the final speaker
+        # turn. Each related-episode title is rendered as
+        # `<Title>: <Subtitle> Episode <N>` which matches the
+        # `Speaker: text` shape. On the live page each related-episode
+        # title repeats once (heading + "Play Pause Add to Queue" row),
+        # so each chrome "speaker" appears exactly twice — real dialog
+        # speakers recur many more times across the transcript.
+        text = "\n".join(
+            [
+                "ROMAN MARS: Welcome to 99% Invisible.",
+                "CHRIS BERUBE: Today's story is about right to repair.",
+                "ROMAN MARS: Let's hear it.",
+                "CHRIS BERUBE: Here's the thing.",
+                "ROMAN MARS: Tell me more.",
+                "CHRIS BERUBE: Right.",
+                "ROMAN MARS: That's all for today.",
+                "Florence Nightingale: Data Viz Pioneer Episode 433 -",
+                "Florence Nightingale: Data Viz Pioneer Play Pause",
+                "A Better World: Radical Cartographic Kurt Kohlstedt -",
+                "A Better World: Radical Cartographic Play Pause",
+                "Mini-Stories: Volume 2 Episode 242 -",
+                "Mini-Stories: Volume 2 Play Pause",
+                "Hills Hoist: The Iconic Rotary Clothesline that Shaped Australia",
+            ]
+        )
+        transcript = self.url_ingest.text_or_html_to_transcript(text)
+        self.assertNotIn("Florence Nightingale", transcript)
+        self.assertNotIn("A Better World", transcript)
+        self.assertNotIn("Mini-Stories", transcript)
+        self.assertNotIn("Hills Hoist", transcript)
+        self.assertIn("That's all for today", transcript)
+
     def test_extract_chapters_finds_common_timestamp_lines(self) -> None:
         text = "00:00 Intro\n12:34 Building durable teams\n1:02:03 Closing thoughts"
         self.assertEqual(

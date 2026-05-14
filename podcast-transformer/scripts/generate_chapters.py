@@ -124,7 +124,7 @@ def _format_timestamp(seconds: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
 
-def _normalize_chapters(payload: dict) -> list[dict]:
+def _normalize_chapters(payload: dict, duration_minutes: int = 0) -> list[dict]:
     raw = payload.get("chapters") or []
     if not isinstance(raw, list):
         return []
@@ -138,6 +138,14 @@ def _normalize_chapters(payload: dict) -> list[dict]:
         try:
             start_min = int(entry.get("start_min"))
         except (TypeError, ValueError):
+            continue
+        # gemma4 occasionally produces start_min values an order of
+        # magnitude past the episode duration (e.g. 300, 430, 800 for a
+        # 61-minute episode). Each one then anchors to the final transcript
+        # turn and the chapter rail collapses — 10 entries pointing at the
+        # same place. Drop anything past the episode's actual length
+        # (when known) so the LLM's confusion doesn't poison the rail.
+        if duration_minutes > 0 and start_min > duration_minutes:
             continue
         if start_min <= last_min:
             # Maintain strict ascending order; nudge to last+1 minute.
@@ -212,10 +220,19 @@ def main(argv: list[str] | None = None) -> int:
     episode_title = episode.get("title", "")
     duration_seconds = episode.get("duration_seconds") or 0
 
+    duration_minutes = duration_seconds // 60 if duration_seconds else 0
+    bound_note = (
+        f"All start_min values MUST be integers in [0, {duration_minutes}]. "
+        f"The episode is {duration_minutes} minutes long — any start_min "
+        f"greater than {duration_minutes} is an error.\n"
+        if duration_minutes
+        else ""
+    )
     user_prompt = (
         (f"Podcast: {podcast_title}\n" if podcast_title else "")
         + (f"Episode: {episode_title}\n" if episode_title else "")
-        + (f"Duration: ~{duration_seconds // 60} minutes\n" if duration_seconds else "")
+        + (f"Duration: ~{duration_minutes} minutes\n" if duration_minutes else "")
+        + bound_note
         + "\nTranscript:\n---\n"
         + trimmed
         + truncation_note
@@ -243,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"generate_chapters: model returned non-JSON ({exc}); saved {debug}", file=sys.stderr)
         return 0
 
-    chapters = _normalize_chapters(payload)
+    chapters = _normalize_chapters(payload, duration_minutes=duration_minutes)
     if len(chapters) < MIN_CHAPTERS:
         print(
             f"generate_chapters: got only {len(chapters)} chapters (need >={MIN_CHAPTERS}); skipping",
