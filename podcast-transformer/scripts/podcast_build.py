@@ -118,7 +118,11 @@ def resolve_structured_turns_path(episode_dir: Path, transcript_path: Path) -> P
 
 
 def read_structured_turns(path: Path) -> list[dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"WARN: ignoring invalid structured turns {path}: {exc}", file=sys.stderr)
+        return []
     if isinstance(raw, dict):
         raw = raw.get("turns") or []
     if not isinstance(raw, list):
@@ -371,21 +375,35 @@ def sync_uncertain_spans(episode_dir: Path, package: dict[str, Any]) -> None:
     sidecar = read_json(sidecar_path)
     verification = sidecar.setdefault("verification", {})
     existing = verification.get("uncertain_spans")
-    if isinstance(existing, list) and existing:
-        return
+    if not isinstance(existing, list):
+        existing = []
+    existing_keys = {
+        (
+            normalize_space(str(span.get("speaker") or "")),
+            normalize_space(str(span.get("text") or "")),
+        )
+        for span in existing
+        if isinstance(span, dict)
+    }
     spans: list[dict[str, str]] = []
     for turn in package.get("turns", []):
         text = str(turn.get("text") or "")
         for match in UNCLEAR_RE.finditer(text):
+            speaker = str(turn.get("speaker") or "")
+            span_text = match.group(0)
+            key = (normalize_space(speaker), normalize_space(span_text))
+            if key in existing_keys:
+                continue
+            existing_keys.add(key)
             spans.append({
                 "timestamp": "",
-                "speaker": str(turn.get("speaker") or ""),
-                "text": match.group(0),
+                "speaker": speaker,
+                "text": span_text,
                 "reason": "Transcript contains unclear or inaudible marker.",
                 "resolution_needed": "Review the publisher transcript or source audio if the span is material.",
             })
     if spans:
-        verification["uncertain_spans"] = spans
+        verification["uncertain_spans"] = existing + spans
         write_json(sidecar_path, sidecar)
 
 
@@ -413,7 +431,6 @@ def slim_for_glance(package: dict[str, Any]) -> dict[str, Any]:
 def render_artifacts(episode_dir: Path, package: dict[str, Any], only: str = "all") -> None:
     final_dir = episode_dir / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
-    sync_uncertain_spans(episode_dir, package)
     write_json(final_dir / "episode.package.json", package)
     write_verified_transcript(package, final_dir)
     if only in {"all", "transcript"}:
@@ -573,6 +590,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "all":
         package = build_package(episode_dir)
+        sync_uncertain_spans(episode_dir, package)
         render_artifacts(episode_dir, package, "all")
         regenerate_library_index(episode_dir)
         return validate_artifacts(episode_dir) or run_existing_validators(episode_dir)

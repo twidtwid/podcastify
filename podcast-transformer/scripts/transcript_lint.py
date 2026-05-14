@@ -106,34 +106,70 @@ def lint_json_segments(data: Any) -> tuple[list[str], list[str], dict[str, Any]]
 
 
 def sidecar_uncertain_span_count(sidecar_path: Path | None) -> int:
-    data = read_sidecar(sidecar_path)
-    if not data:
-        return 0
+    data, _ = read_sidecar_with_error(sidecar_path)
+    return sidecar_uncertain_span_count_from_data(data)
+
+
+def sidecar_uncertain_span_count_from_data(data: dict[str, Any]) -> int:
     spans = data.get("verification", {}).get("uncertain_spans", [])
     return len(spans) if isinstance(spans, list) else 0
 
 
 def sidecar_chapter_count(sidecar_path: Path | None) -> int:
-    data = read_sidecar(sidecar_path)
-    if not data:
-        return 0
+    data, _ = read_sidecar_with_error(sidecar_path)
+    return sidecar_chapter_count_from_data(data)
+
+
+def sidecar_chapter_count_from_data(data: dict[str, Any]) -> int:
     chapters = data.get("episode", {}).get("chapters", [])
     return len(chapters) if isinstance(chapters, list) else 0
 
 
 def read_sidecar(sidecar_path: Path | None) -> dict[str, Any]:
+    data, _ = read_sidecar_with_error(sidecar_path)
+    return data
+
+
+def read_sidecar_with_error(sidecar_path: Path | None) -> tuple[dict[str, Any], str | None]:
     if sidecar_path is None:
-        return {}
+        return {}, None
     try:
         data = json.loads(sidecar_path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        detail = str(exc).split(": line", 1)[0]
+        return {}, f"could not read sidecar {sidecar_path}: {detail}"
+    if not isinstance(data, dict):
+        return {}, f"sidecar root must be an object: {sidecar_path}"
+    return data, None
+
+
+def normalize_unclear_marker(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def covered_unclear_marker_count(markers: list[str], sidecar: dict[str, Any]) -> int:
+    spans = sidecar.get("verification", {}).get("uncertain_spans", [])
+    if not isinstance(spans, list):
+        return 0
+    span_texts = [
+        normalize_unclear_marker(str(span.get("text") or ""))
+        for span in spans
+        if isinstance(span, dict)
+    ]
+    covered = 0
+    for marker in markers:
+        normalized = normalize_unclear_marker(marker)
+        if normalized and any(normalized in span_text for span_text in span_texts):
+            covered += 1
+    return covered
 
 
 def lint_text(text: str, *, sidecar_path: Path | None = None) -> tuple[list[str], list[str], dict[str, Any]]:
     errors: list[str] = []
     warnings: list[str] = []
+    sidecar, sidecar_error = read_sidecar_with_error(sidecar_path)
+    if sidecar_error:
+        errors.append(sidecar_error)
     # Chapter-heading lines (`## [12:00] Title`) are rendered metadata, not
     # source transcript timing — they're injected by podcast_build from
     # sidecar.episode.chapters. Strip them before the monotonic timestamp
@@ -146,7 +182,8 @@ def lint_text(text: str, *, sidecar_path: Path | None = None) -> tuple[list[str]
     )
     timestamps = [timestamp_to_seconds(match) for match in TIMESTAMP_RE.finditer(scan_text)]
     speakers = [match.group(1).strip() for match in SPEAKER_RE.finditer(text)]
-    unclear_count = len(UNCLEAR_RE.findall(text))
+    unclear_markers = [match.group(0) for match in UNCLEAR_RE.finditer(text)]
+    unclear_count = len(unclear_markers)
     words = re.findall(r"\b[\w'-]+\b", text)
 
     for index, current in enumerate(timestamps[1:], start=1):
@@ -154,7 +191,7 @@ def lint_text(text: str, *, sidecar_path: Path | None = None) -> tuple[list[str]
             errors.append(f"timestamp moves backwards near timestamp #{index + 1}")
             break
 
-    chapter_count = sidecar_chapter_count(sidecar_path)
+    chapter_count = sidecar_chapter_count_from_data(sidecar)
     if not timestamps and not chapter_count:
         warnings.append("no timestamps found")
     if not speakers:
@@ -173,7 +210,8 @@ def lint_text(text: str, *, sidecar_path: Path | None = None) -> tuple[list[str]
         sample = ", ".join(str(line) for line in long_lines[:8])
         warnings.append(f"very long transcript lines at: {sample}")
 
-    covered_unclear_count = sidecar_uncertain_span_count(sidecar_path)
+    sidecar_uncertain_count = sidecar_uncertain_span_count_from_data(sidecar)
+    covered_unclear_count = covered_unclear_marker_count(unclear_markers, sidecar)
     if unclear_count and covered_unclear_count < unclear_count:
         warnings.append(f"{unclear_count} unclear/inaudible markers found; confirm sidecar uncertain_spans covers material cases")
 
@@ -183,7 +221,8 @@ def lint_text(text: str, *, sidecar_path: Path | None = None) -> tuple[list[str]
         "timestamps": len(timestamps),
         "speakers": sorted(set(speakers)),
         "unclear_markers": unclear_count,
-        "sidecar_uncertain_spans": covered_unclear_count,
+        "covered_unclear_markers": covered_unclear_count,
+        "sidecar_uncertain_spans": sidecar_uncertain_count,
         "sidecar_chapters": chapter_count,
     }
     return errors, warnings, stats

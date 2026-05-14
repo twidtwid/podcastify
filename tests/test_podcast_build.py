@@ -106,6 +106,67 @@ class SpeakerVisibilityTests(unittest.TestCase):
             ],
         )
 
+    def test_malformed_structured_turns_fall_back_to_text_transcript(self) -> None:
+        podcast_build = load_podcast_build()
+        with tempfile.TemporaryDirectory() as tmp:
+            ep = Path(tmp)
+            self._write_minimal_sidecar(ep)
+            (ep / "source" / "user-provided-transcript.txt").write_text(
+                "Lenny Rachitsky: Text fallback should be used.\n"
+                "Eric Ries: The structured turns file is corrupt.\n",
+                encoding="utf-8",
+            )
+            (ep / "source" / "transcript.turns.json").write_text(
+                "{not valid json",
+                encoding="utf-8",
+            )
+
+            package = podcast_build.build_package(ep)
+
+        self.assertEqual(
+            [(t["speaker"], t["text"]) for t in package["turns"]],
+            [
+                ("Lenny Rachitsky", "Text fallback should be used."),
+                ("Eric Ries", "The structured turns file is corrupt."),
+            ],
+        )
+
+    def test_sync_uncertain_spans_merges_with_existing_manual_spans(self) -> None:
+        podcast_build = load_podcast_build()
+        with tempfile.TemporaryDirectory() as tmp:
+            ep = Path(tmp)
+            self._write_minimal_sidecar(ep)
+            sidecar_path = ep / "final" / "metadata.sidecar.json"
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            sidecar["verification"]["uncertain_spans"] = [
+                {
+                    "timestamp": "00:01:00",
+                    "speaker": "Lenny Rachitsky",
+                    "text": "[unclear company name]",
+                    "reason": "Manual review note.",
+                    "resolution_needed": "Check audio.",
+                }
+            ]
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            package = {
+                "turns": [
+                    {
+                        "speaker": "Lenny Rachitsky",
+                        "text": "This already has [unclear company name].",
+                    },
+                    {
+                        "speaker": "Eric Ries",
+                        "text": "This adds [inaudible 00:03:14] from the transcript.",
+                    },
+                ]
+            }
+
+            podcast_build.sync_uncertain_spans(ep, package)
+
+            updated = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        spans = updated["verification"]["uncertain_spans"]
+        self.assertEqual([span["text"] for span in spans], ["[unclear company name]", "[inaudible 00:03:14]"])
+
     def test_transcript_renderer_suppresses_repeated_speaker_labels(self) -> None:
         # The rendered browser is client-side JS; guard that the shared
         # renderer honors the package field produced above.

@@ -80,6 +80,36 @@ class SpeakerLabelRecognitionTests(unittest.TestCase):
         self.assertEqual(warnings, ["no timestamps found"])
         self.assertEqual(stats["unclear_markers"], 1)
 
+    def test_unrelated_uncertain_span_does_not_cover_unclear_marker(self) -> None:
+        lint = load_transcript_lint()
+        text = "Eric Ries: This phrase has [inaudible 00:03:14] in it.\n"
+        sidecar = {"verification": {"uncertain_spans": [{"text": "[unclear company name]"}]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            sidecar_path = Path(tmp) / "metadata.sidecar.json"
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            errors, warnings, stats = lint.lint_text(text, sidecar_path=sidecar_path)
+        self.assertEqual(errors, [])
+        self.assertIn(
+            "1 unclear/inaudible markers found; confirm sidecar uncertain_spans covers material cases",
+            warnings,
+        )
+        self.assertEqual(stats["sidecar_uncertain_spans"], 1)
+        self.assertEqual(stats["covered_unclear_markers"], 0)
+
+    def test_malformed_explicit_sidecar_is_reported(self) -> None:
+        lint = load_transcript_lint()
+        text = "Eric Ries: This phrase has [inaudible 00:03:14] in it.\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            sidecar_path = Path(tmp) / "metadata.sidecar.json"
+            sidecar_path.write_text("{not valid json", encoding="utf-8")
+            errors, warnings, stats = lint.lint_text(text, sidecar_path=sidecar_path)
+        self.assertEqual(errors, [f"could not read sidecar {sidecar_path}: Expecting property name enclosed in double quotes"])
+        self.assertIn(
+            "1 unclear/inaudible markers found; confirm sidecar uncertain_spans covers material cases",
+            warnings,
+        )
+        self.assertEqual(stats["sidecar_uncertain_spans"], 0)
+
     def test_uncovered_unclear_markers_still_warn(self) -> None:
         lint = load_transcript_lint()
         text = "Guest: This phrase has [inaudible 00:03:14] in it.\n"
