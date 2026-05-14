@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
+[![Release: 1.0](https://img.shields.io/badge/release-1.0-brightgreen.svg)](CHANGELOG.md)
 
 Turn a podcast episode into two self-contained HTML artifacts you can actually keep — a one-page **briefing** that replaces the podcast for a reader who isn't going to listen, and an **annotated transcript** with a sticky chapter rail and in-text search.
 
@@ -23,6 +24,18 @@ Two HTML files per episode, no build step, no external dependencies at view time
 
 Generated episode packages land under `podcast-output/`, which is intentionally not committed because transcripts and show artifacts may not be redistributable.
 
+## 1.0 status
+
+`podcastify` 1.0 is the stable URL-first pipeline for the supported publisher pages below. The 1.0 test set has been run clean and the generated briefings and transcripts have passed manual review.
+
+The 1.0 quality bar is:
+
+- Direct URL ingest for supported publishers, with local resource/transcript fallback when a page is outside the provider set.
+- Structured transcript turns preferred when available; malformed optional turn files warn and fall back to text parsing.
+- Speaker labels render only when the speaker changes, so long same-speaker runs read like prose instead of a log dump.
+- `uncertain_spans` are merged into sidecar metadata before validation and lint checks match the actual unclear marker text, not just span counts.
+- Both HTML artifacts are self-contained and validated against the known renderer regressions.
+
 ## Known limitations
 
 - **URL ingest is publisher-specific.** Supported publisher pages can be passed directly. For unsupported publishers, use a local resource file with a transcript or place the transcript at `source/user-provided-transcript.txt` and run with `--skip-fetch`.
@@ -32,11 +45,11 @@ Generated episode packages land under `podcast-output/`, which is intentionally 
 ## How it works
 
 1. **Ingest** a supported episode URL, or parse a dropped resource file (canonical URL + chapter timeline + show-notes links).
-2. **Fetch or use** the transcript from provider pages, direct transcript links, inline transcript sections, or a user-supplied transcript.
+2. **Fetch or use** the transcript from provider pages, direct transcript links, inline transcript sections, structured turn bundles, or a user-supplied transcript.
 3. **Draft** the briefing's claims, takeaways, and bottom-line via a local Ollama call.
 4. **Sharpen** each claim topic and takeaway via a second local Ollama call (think=false on a larger model — sharp, short outputs).
 5. **Enumerate + enrich** the entity inspector (people, companies, books, concepts) with categorization and one-line bios.
-6. **Render** both HTML artifacts from shared CSS+JS templates with all assets inlined.
+6. **Render + validate** both HTML artifacts from shared CSS+JS templates with all assets inlined.
 
 The skill contract — when it should trigger, input format, output, the quality bar — lives in [`SKILL.md`](SKILL.md).
 
@@ -98,7 +111,7 @@ For supported publisher pages, pass the episode URL directly:
 
 The URL ingest step fetches the public episode page, discovers a transcript when the provider exposes one, and writes the local source package used by the rest of the pipeline.
 
-Supported v1 publisher pages:
+Supported 1.0 publisher pages:
 
 - Lenny's Newsletter/Substack
 - The New Yorker Radio Hour
@@ -123,6 +136,16 @@ python3 ~/.codex/skills/podcastextract/podcast-transformer/scripts/extract_one.p
 ```
 
 Output lands in `podcast-output/<slug>/final/`.
+
+Each completed run should leave these files in `final/`:
+
+| File | Purpose |
+|---|---|
+| `podcast-at-a-glance.html` | Reader-facing briefing |
+| `annotated-transcript.html` | Reader-facing transcript |
+| `episode.package.json` | Renderer data package |
+| `metadata.sidecar.json` | Audit trail, chapters, terminology, uncertainty notes |
+| `transcript.verified.md` | Markdown transcript used by validators |
 
 For episodes the pipeline can't auto-derive metadata for (non-Substack publishers, missing host/guest in show notes), pass overrides explicitly:
 

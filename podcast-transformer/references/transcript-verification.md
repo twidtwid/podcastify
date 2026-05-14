@@ -16,7 +16,7 @@ Do **not** open official pages for every book, paper, company, or product mentio
 ## Correction Workflow (single pass)
 
 1. Build the candidate term list in **one** pass from the already-collected sources: hosts, guests, organizations and books/papers explicitly named in chapter titles or show notes.
-2. Grep the raw transcript for phonetic variants and inconsistent spellings of those candidates.
+2. Search the raw transcript for phonetic variants and inconsistent spellings of those candidates.
 3. Apply corrections backed by sources already collected. Record decisions in `verification.terminology` / `verification.people` / `verification.organizations` / `verification.corrections`.
 4. For anything ambiguous, mark `[name uncertain]` / `[term uncertain]` and add to `verification.uncertain_spans`. **Do not** open new browser tabs mid-pass to resolve.
 5. Preserve transcript meaning. Do not rewrite spoken language into polished prose except for clear transcription errors.
@@ -31,7 +31,9 @@ Use uncertainty markers rather than guessing:
 - `[name uncertain: Jane? 00:24:17]` when a plausible name is not source-backed.
 - `[term uncertain]` when a technical term has multiple plausible spellings.
 
-Add each material uncertainty to `verification.uncertain_spans` with timestamp, speaker, reason, and the best next step.
+Add each material uncertainty to `verification.uncertain_spans` with timestamp, speaker, exact marker text, reason, and the best next step. `transcript_lint.py --sidecar` treats an uncertainty as covered only when the sidecar span text contains the actual unclear marker from the transcript; one unrelated sidecar span does not cover another marker.
+
+When `podcast_build.py all` sees transcript markers such as `[inaudible 00:03:14]`, it merges generated entries into `verification.uncertain_spans` before validation. Existing manual spans are preserved and duplicate marker/speaker pairs are not re-added.
 
 ## Speaker Labels
 

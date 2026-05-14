@@ -21,7 +21,7 @@ Do not invoke when:
 
 ## Input
 
-Preferred input is a supported publisher episode URL. V1 supports:
+Preferred input is a supported publisher episode URL. 1.0 supports:
 
 - Lenny's Newsletter/Substack
 - The New Yorker Radio Hour
@@ -38,7 +38,7 @@ Local resource files are still supported. The resource file should contain (in a
 - A **show-notes link list** — `• Label: https://...` lines for canonical entity URLs (people, books, companies).
 - Anything else is ignored.
 
-If the transcript itself is pasted into the resource file, the pipeline detects it and skips the scrape.
+If the transcript itself is pasted into the resource file, the pipeline detects it and skips the scrape. If URL ingest creates `source/transcript.turns.json`, the renderer uses those structured turns before falling back to text speaker-line parsing.
 
 ## Prerequisites
 
@@ -83,6 +83,7 @@ Every successful run must satisfy:
   - `transcript_lint.py`
   - `notes_lint.py`
   - `podcast_build.py validate` (the banned-text guard for AI slop patterns)
+- Any unclear transcript markers are either absent or matched by sidecar `verification.uncertain_spans` entries. Coverage is by marker text, not by count.
 - `episode.notes.json` has **8 claims** and **8 takeaways** (8±1 acceptable; under 6 means the draft model regressed — re-run).
 - Every chapter in the chapter rail anchors to a distinct turn, OR the duplicate-anchor warnings are accepted as "long-answer artifacts" (one Eric-Ries-style monologue covers 3+ chapters).
 - Every entity in the inspector has a real category (`person | company | organization | book | concept | quote`). Anything stuck in `concept` with empty notes is a categorization failure — run `enrich_terminology.py` explicitly.
@@ -106,7 +107,7 @@ Every successful run must satisfy:
 |  9 | `populate_terminology.py`         | LLM    | Enumerate ~25-35 entities (people / orgs / books / concepts).         |
 | 10 | `enrich_terminology.py`           | LLM    | Categorize + describe any entries with empty notes.                   |
 | 11 | `merge_terminology_urls.py`       | code   | Attach show-notes URLs to terminology entries (truncation-safe; Wikipedia URLs reconstructed from entity name when sliced). |
-| 12 | `podcast_build.py all`            | code   | Render both HTML files, regenerate library index, run all validators. |
+| 12 | `podcast_build.py all`            | code   | Merge generated uncertainty spans, render both HTML files, regenerate library index, run all validators. |
 
 End-to-end wall-clock on a typical 1h40m episode: **~3 minutes** on an M-series Mac with both Ollama models warm.
 

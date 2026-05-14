@@ -90,7 +90,7 @@ Recommended fields:
 - `terminology`: array of corrected/verified terms.
 - `people`: array of people records with `name`, `role`, `source`, and `confidence`.
 - `organizations`: array of organization records.
-- `uncertain_spans`: array of unclear transcript spans.
+- `uncertain_spans`: array of unclear transcript spans. For transcript-lint coverage, each span's `text` should contain the exact unclear marker that appears in the transcript.
 - `corrections`: array of major corrections from raw to verified transcript.
 
 Example terminology record:
@@ -128,6 +128,8 @@ Example uncertain span:
   "resolution_needed": "Ask user or inspect higher-quality audio"
 }
 ```
+
+`podcast_build.py all` may append generated uncertain spans for markers already present in transcript turns. It preserves existing manual spans and deduplicates by speaker plus marker text.
 
 ## Outputs
 
