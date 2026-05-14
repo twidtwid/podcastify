@@ -118,6 +118,7 @@ Supported 1.0 publisher pages:
 - FoundMyFitness
 - 99% Invisible
 - The Tim Ferriss Show
+- Conversations with Tyler
 
 Supported providers are declared as one JSON file per host under [`podcast-transformer/providers/`](podcast-transformer/providers/). A new site should usually be one small manifest file plus fixture coverage.
 

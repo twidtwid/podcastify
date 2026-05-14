@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Adds direct URL-ingest support for Conversations with Tyler.
+- Preserves publisher canonical URLs from URL-ingest bundles when platform links such as YouTube or Apple Podcasts are also present.
+- Allows normal WordPress pages with form-related JavaScript noscript warnings through the fetch guard.
+
 ## 1.0.1 - 2026-05-14
 
 Patch release for the main library index.
