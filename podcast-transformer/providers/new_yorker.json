@@ -2,5 +2,7 @@
   "id": "new_yorker",
   "domains": ["www.newyorker.com"],
   "kind": "direct_transcript_link",
-  "transcript_link_contains": "transcript"
+  "transcript_link_contains": "transcript",
+  "podcast_title": "The New Yorker Radio Hour",
+  "host": "David Remnick"
 }

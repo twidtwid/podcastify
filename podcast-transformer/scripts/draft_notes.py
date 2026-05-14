@@ -355,16 +355,30 @@ def main(argv: list[str] | None = None) -> int:
                 print("  is the daemon running? `ollama serve`", file=sys.stderr)
                 print(f"  is the model pulled? `ollama pull {model}`", file=sys.stderr)
                 return 2
-            # Cheap count check before full JSON parse: count "topic" and
-            # bare-list-item indicators. If we got a clearly short response,
-            # retry once.
+            # Count both claims and takeaways before declaring the draft
+            # "thick enough." The earlier check only counted `"topic"` keys
+            # (claims) and considered presence of `"takeaways"` sufficient,
+            # so a draft with 8 claims + 4 takeaways slipped through without
+            # the retry — and downstream notes_lint then warned "only 4
+            # takeaways (recommend 5+)" with no automatic recovery. Parse the
+            # JSON to count both lists; fall back to the cheap heuristic if
+            # the model output isn't parseable yet (retry will rerun anyway).
             t_count = raw.count('"topic"')
-            takeaway_block = raw.count('"takeaways"')
-            if t_count >= 6 and takeaway_block:
+            try:
+                parsed_check = extract_json(raw)
+                n_takeaways = len(parsed_check.get("takeaways", []) or [])
+                n_claims = len(parsed_check.get("claims", []) or [])
+            except Exception:
+                n_takeaways = 0
+                n_claims = t_count
+            if n_takeaways >= 6 and n_claims >= 6:
                 break
             if attempts < 2:
-                print(f"  draft looked thin (topic-count={t_count}); retrying once...",
-                      file=sys.stderr)
+                print(
+                    f"  draft looked thin (takeaways={n_takeaways}, claims={n_claims}); "
+                    "retrying once...",
+                    file=sys.stderr,
+                )
     try:
         draft = extract_json(raw)
     except Exception as e:

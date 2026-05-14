@@ -413,6 +413,32 @@ def main(argv: list[str] | None = None) -> int:
     # Title precedence: CLI flag > captured-from-scrape > URL-slug guess.
     title = args.title or captured_title["value"] or parsed.get("episode_title_guess", "")
 
+    # ── 3a. resolve_speakers ─────────────────────────────────────────
+    # Tiny Ollama call that reads the episode title + opening turns of the
+    # transcript and returns {host, guests}. Replaces the prose-mining regex
+    # heuristics that used to live in parse_source — those overfit one
+    # publisher's voice and broke everywhere else. The model is asked to
+    # return empty values when uncertain, so a wrong identity never poisons
+    # the briefing.
+    step(
+        "resolve_speakers", "script", episode_dir,
+        lambda: run([
+            sys.executable, str(SCRIPTS / "resolve_speakers.py"),
+            str(episode_dir),
+            "--title", title or "",
+            "--podcast-title", parsed.get("podcast_title", "") or "",
+            "--episode-url", canonical_url or "",
+        ]),
+        note="LLM call: identify host + guests from title + opening transcript",
+    )
+    speakers_path = episode_dir / "working" / "_speakers.json"
+    speakers = {"host": "", "guests": []}
+    if speakers_path.is_file():
+        try:
+            speakers = json.loads(speakers_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+
     def _init_sidecar() -> None:
         cmd = [
             sys.executable, str(SCRIPTS / "sidecar.py"), "init",
@@ -426,16 +452,40 @@ def main(argv: list[str] | None = None) -> int:
             cmd += ["--podcast-title", parsed["podcast_title"]]
         if canonical_url:
             cmd += ["--episode-url", canonical_url]
-        host = args.host or parsed.get("host_guess")
+        # Host precedence: CLI flag > bundle declaration (parsed) > LLM resolver.
+        host = args.host or parsed.get("host_guess") or speakers.get("host", "")
         if host:
             cmd += ["--host", host]
-        guests = args.guest or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
+        # Guest precedence: same order as host. The bundle rarely declares a
+        # guest; the resolver is normally the source of truth.
+        guests = (
+            args.guest
+            or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
+            or [g for g in speakers.get("guests", []) if g]
+        )
         for g in guests:
             cmd += ["--guest", g]
-        if args.published_at:
-            cmd += ["--published-at", args.published_at]
-        if args.duration_seconds:
-            cmd += ["--duration-seconds", str(args.duration_seconds)]
+        # Fall back to whatever url_ingest captured (Substack transcription.json
+        # ends → duration, page's `<time datetime>` → published_at). Without
+        # this, sidecar.episode.duration_seconds is `null` and the library
+        # index card renders "0M"; published_at is "" and the hero loses its
+        # date stamp. Both signals are already present in `_source_input.txt`
+        # — we just need to forward them through.
+        published_at = args.published_at or parsed.get("published_at_guess", "")
+        if published_at:
+            cmd += ["--published-at", published_at]
+        duration_seconds = args.duration_seconds or parsed.get("duration_seconds_guess") or 0
+        if not duration_seconds and transcript_md.exists():
+            # Last-resort estimate so the library index doesn't render "0M".
+            # 150 words/minute is the conventional podcast pace; the value is
+            # explicitly approximate (rounded to nearest minute) and gets
+            # overwritten if the user later supplies a precise duration via
+            # --duration-seconds.
+            words = len(transcript_md.read_text(encoding="utf-8").split())
+            if words:
+                duration_seconds = max(60, round(words / 150) * 60)
+        if duration_seconds:
+            cmd += ["--duration-seconds", str(duration_seconds)]
         run(cmd)
 
     step("sidecar_init", "script", episode_dir, _init_sidecar)
@@ -473,10 +523,36 @@ def main(argv: list[str] | None = None) -> int:
     step("draft_notes", "script", episode_dir, _draft_notes,
          note=f"draft via {auth_note}")
 
-    # ── 7. promote draft → final, and force the canonical title ────────
-    # The model is asked to draft a `short_title`, but the canonical title
-    # is what the publisher used. Use sidecar.episode.title verbatim so the
-    # briefing and library index show the real title, not a model rewrite.
+    # ── 7. promote draft → final, with a length-aware short_title ──────
+    # The model drafts a punchy `short_title`. Normally we override it with
+    # the publisher's canonical so the briefing matches what the publisher
+    # actually shipped. BUT Tim Ferriss-style SEO titles run ~200 chars
+    # ("Elad Gil, Consigliere to Empire Builders — How to Spot Billion-Dollar
+    # Companies Before Everyone Else, The Misty AI Frontier, How Coke Beat
+    # Pepsi, When Consensus Pays, and Much More (#863)") — far too long for
+    # the briefing's top bar / library card chip. When the canonical is
+    # genuinely long, prefer the publisher's own pre-em-dash chunk, then
+    # fall back to the LLM draft. Keep the FULL title in `episode.title`
+    # (the hero block can wrap it); only override `short_title` here.
+    SHORT_TITLE_CHAR_LIMIT = 80
+
+    def _shorten_for_chrome(canonical: str, draft_short: str) -> str:
+        canonical = canonical.strip()
+        if not canonical:
+            return draft_short or canonical
+        if len(canonical) <= SHORT_TITLE_CHAR_LIMIT:
+            return canonical
+        # Tim Ferriss / Sam Harris convention: "<Guest Headline> — <topic list>".
+        # The first em-dash chunk is the real headline, the rest is SEO bait.
+        for sep in (" — ", " – ", ": "):
+            head = canonical.split(sep, 1)[0].strip()
+            if head and len(head) <= SHORT_TITLE_CHAR_LIMIT:
+                return head
+        # Fall back to whatever the LLM drafted, then to a hard truncation.
+        if draft_short and len(draft_short) <= SHORT_TITLE_CHAR_LIMIT:
+            return draft_short
+        return canonical[: SHORT_TITLE_CHAR_LIMIT - 1].rstrip() + "…"
+
     def _promote() -> None:
         draft = episode_dir / "source" / "episode.notes.draft.json"
         final = episode_dir / "source" / "episode.notes.json"
@@ -485,8 +561,8 @@ def main(argv: list[str] | None = None) -> int:
         notes = json.loads(draft.read_text(encoding="utf-8"))
         sidecar = json.loads((episode_dir / "final" / "metadata.sidecar.json").read_text(encoding="utf-8"))
         canonical_title = (sidecar.get("episode", {}).get("title") or "").strip()
-        if canonical_title:
-            notes["short_title"] = canonical_title
+        draft_short = (notes.get("short_title") or "").strip()
+        notes["short_title"] = _shorten_for_chrome(canonical_title, draft_short)
         final.write_text(json.dumps(notes, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     step("promote_notes", "script", episode_dir, _promote)
@@ -544,6 +620,21 @@ def main(argv: list[str] | None = None) -> int:
 
     step("splice_chapter_queries", "script", episode_dir, _splice)
 
+    # ── 9b. generate chapters via LLM when the publisher didn't expose any ──
+    # Substack/New Yorker/FoundMyFitness/99pi/Tim Ferriss pages don't embed
+    # YouTube-style `(00:00) Title` chapter timelines in their HTML, so
+    # sidecar.episode.chapters stays empty and the transcript browser's left
+    # rail collapses to just the search box. generate_chapters.py reads the
+    # full transcript and asks the local Gemma model for 8-12 chapter
+    # boundaries with verbatim query phrases for exact turn-anchoring.
+    # No-op when the sidecar already has chapters from another source.
+    step(
+        "generate_chapters", "script", episode_dir,
+        lambda: run([sys.executable, str(SCRIPTS / "generate_chapters.py"),
+                     str(episode_dir)]),
+        note="LLM call: 8-12 chapter boundaries + verbatim anchor queries",
+    )
+
     # ── 10a. populate terminology via LLM (entity enumeration) ────────
     step("populate_terminology", "script", episode_dir, lambda: run(
         [sys.executable, str(SCRIPTS / "populate_terminology.py"),
@@ -551,9 +642,16 @@ def main(argv: list[str] | None = None) -> int:
     ), note="LLM call: enumerate people/orgs/books/concepts")
 
     # ── 10b. merge URLs from show-notes link list into terminology ────
+    # NOTE: `--add-missing` is deliberately NOT passed. populate_terminology's
+    # LLM call already enumerated the real entities from the transcript; the
+    # merge step only ATTACHES show-notes URLs to those. Without this guard,
+    # publisher chrome links — Substack's `/privacy`, `/tos`, `/ccpa`, the
+    # Cloudflare email-protection rewrite, "turn on JavaScript" noscript
+    # fallbacks — got promoted to first-class "concept" terminology entries,
+    # which then got hallucinated descriptions by enrich_terminology.
     step("merge_terminology_urls", "script", episode_dir, lambda: run(
         [sys.executable, str(SCRIPTS / "merge_terminology_urls.py"),
-         str(episode_dir), "--add-missing"],
+         str(episode_dir)],
     ))
 
     # ── 10c. enrich entries that landed bare from the show-notes merge ──
@@ -561,6 +659,16 @@ def main(argv: list[str] | None = None) -> int:
         [sys.executable, str(SCRIPTS / "enrich_terminology.py"),
          str(episode_dir)],
     ), note="LLM call: categorize + describe bare entries")
+
+    # ── 10d. resolve canonical Wikipedia URLs for entries still missing one ──
+    # Show notes from url_ingest bundles rarely include per-entity links, so
+    # without this step the briefing's inspector is all plain text. Bounded
+    # network step — failures (404, disambiguation, name mismatch) just leave
+    # the URL empty and the renderer falls back to plain text.
+    step("resolve_terminology_urls", "script", episode_dir, lambda: run(
+        [sys.executable, str(SCRIPTS / "resolve_terminology_urls.py"),
+         str(episode_dir)],
+    ), note="HTTP: Wikipedia REST summary lookups for people/companies/books")
 
     # ── 11. podcast_build all ─────────────────────────────────────────
     step("podcast_build_all", "script", episode_dir, lambda: run(

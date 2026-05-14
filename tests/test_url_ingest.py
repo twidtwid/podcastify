@@ -303,6 +303,84 @@ class UrlIngestSubstackProviderTests(unittest.TestCase):
         self.assertEqual(provenance["provider_id"], "lenny_substack")
         self.assertEqual(provenance["chapters"][1], {"time": "06:45", "title": "Long-term company building"})
 
+    def test_substack_duration_seconds_from_segment_list(self) -> None:
+        # Real transcription.json is a flat list of {start, end, text, ...}
+        # segments — the last segment's `end` is the wall-clock duration.
+        segments = [
+            {"start": 0.0, "end": 12.5, "text": "Hello"},
+            {"start": 12.6, "end": 30.0, "text": "World"},
+            {"start": 30.0, "end": 5112.374, "text": "Goodbye"},
+        ]
+        self.assertEqual(self.url_ingest._substack_duration_seconds(segments), 5112)
+
+    def test_substack_duration_seconds_from_dict_envelope(self) -> None:
+        envelope = {"segments": [{"start": 0.0, "end": 90.7, "text": "x"}]}
+        self.assertEqual(self.url_ingest._substack_duration_seconds(envelope), 90)
+
+    def test_substack_duration_seconds_handles_missing_payload(self) -> None:
+        self.assertEqual(self.url_ingest._substack_duration_seconds([]), 0)
+        self.assertEqual(self.url_ingest._substack_duration_seconds(None), 0)
+
+    def test_useful_links_now_keeps_entity_links(self) -> None:
+        # Pre-fix behavior dropped everything except Apple/Spotify/YouTube and
+        # left extract_entity_links with nothing to attach to terminology
+        # entries — so the briefing's inspector showed zero outlinks. Now we
+        # keep any HTTP(S) link that isn't obvious chrome.
+        links = [
+            {"text": "Apple", "url": "https://pod.link/show.apple?key=abc"},
+            {"text": "Quibi", "url": "https://en.wikipedia.org/wiki/Quibi"},
+            {"text": "Sign in", "url": "https://www.example.com/signin"},
+            {"text": "Share on Twitter", "url": "https://twitter.com/intent/tweet?url=…"},
+            {"text": "Eric Ries", "url": "https://en.wikipedia.org/wiki/Eric_Ries"},
+        ]
+        kept = self.url_ingest.useful_links(links)
+        urls = [l["url"] for l in kept]
+        self.assertIn("https://en.wikipedia.org/wiki/Quibi", urls)
+        self.assertIn("https://en.wikipedia.org/wiki/Eric_Ries", urls)
+        self.assertIn("https://pod.link/show.apple?key=abc", urls)
+        # Sign-in chrome and share intents must still be filtered.
+        self.assertNotIn("https://www.example.com/signin", urls)
+        self.assertFalse(any("twitter.com/intent" in u for u in urls))
+
+    def test_useful_links_drops_publisher_chrome(self) -> None:
+        # Regression: Substack legal footer + Cloudflare email-obfuscation +
+        # noscript fallback were leaking through as entity bullets, then
+        # getting promoted to fake terminology entries ("Privacy",
+        # "[email protected]", "turn on JavaScript", "Collection notice").
+        links = [
+            {"text": "Eric Ries", "url": "https://en.wikipedia.org/wiki/Eric_Ries"},
+            {"text": "Privacy", "url": "https://substack.com/privacy"},
+            {"text": "Terms", "url": "https://substack.com/tos"},
+            {"text": "Collection notice", "url": "https://substack.com/ccpa#personal-data-collected"},
+            {"text": "[email protected]", "url": "https://www.lennysnewsletter.com/cdn-cgi/l/email-protection#abc"},
+            {"text": "turn on JavaScript", "url": "https://enable-javascript.com/"},
+            {"text": "DMCA", "url": "https://substack.com/dmca"},
+        ]
+        kept_urls = [l["url"] for l in self.url_ingest.useful_links(links)]
+        self.assertEqual(kept_urls, ["https://en.wikipedia.org/wiki/Eric_Ries"])
+
+    def test_substack_speaker_map_handles_escaped_quote_embed(self) -> None:
+        # In production Substack post pages, the speaker_map embed is a
+        # JSON-encoded string inside an outer JSON, so the bytes are
+        # `\"speaker_map\":{\"SPEAKER_0\":\"Eric Ries\"...}` rather than a plain
+        # `"speaker_map": {...}` literal. The escaped form must be recognized
+        # so the bundle gets human-named speakers instead of raw SPEAKER_NN.
+        escaped = (
+            r'something,\"speaker_map\":{\"SPEAKER_0\":\"Eric Ries\",'
+            r'\"SPEAKER_1\":\"Lenny Rachitsky\"},more'
+        )
+        self.assertEqual(
+            self.url_ingest.extract_substack_speaker_map(escaped),
+            {"SPEAKER_0": "Eric Ries", "SPEAKER_1": "Lenny Rachitsky"},
+        )
+
+    def test_substack_speaker_map_still_handles_unescaped_embed(self) -> None:
+        plain = 'foo, "speaker_map": {"SPEAKER_0": "A", "SPEAKER_1": "B"}, bar'
+        self.assertEqual(
+            self.url_ingest.extract_substack_speaker_map(plain),
+            {"SPEAKER_0": "A", "SPEAKER_1": "B"},
+        )
+
     def test_substack_prefers_escaped_signed_cdn_url(self) -> None:
         html_text = (
             r'{\"transcription\":{\"cdn_url\":\"'

@@ -1,5 +1,7 @@
 {
   "id": "lenny_substack",
   "domains": ["www.lennysnewsletter.com"],
-  "kind": "substack"
+  "kind": "substack",
+  "podcast_title": "Lenny's Podcast: Product | Career | Growth",
+  "host": "Lenny Rachitsky"
 }

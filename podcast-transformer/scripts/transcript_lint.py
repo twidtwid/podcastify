@@ -21,8 +21,12 @@ TIMESTAMP_RE = re.compile(
 # A speaker label is one or more whitespace-separated tokens before a colon, where
 # each token is either ALL-CAPS or TitleCase. Reject sentences-with-colons
 # like "Doctorow's three-stage platform decay: ..." because "three-stage" / "platform" /
-# "decay" begin with lowercase letters.
-_SPEAKER_TOKEN = r"(?:[A-Z][A-Z0-9.'-]*|[A-Z][a-z][A-Za-z0-9.'-]*)"
+# "decay" begin with lowercase letters. The ALL-CAPS branch admits an underscore
+# so diarization labels like SPEAKER_0 / SPEAKER_01 are recognized as speakers
+# rather than treated as "no speaker labels found" (false negative); the TitleCase
+# branch keeps the original character set (no underscore) because human names
+# don't contain them and we don't want to widen the false-positive surface.
+_SPEAKER_TOKEN = r"(?:[A-Z][A-Z0-9_.'-]*|[A-Z][a-z][A-Za-z0-9.'-]*)"
 # Speaker tokens are separated by horizontal whitespace only — never a newline —
 # so a sentence-ending name followed by a real speaker label on the next line
 # (e.g. "...like Jerry.\n\nJARED WILSON: ...") doesn't get captured as a single
@@ -104,7 +108,17 @@ def lint_json_segments(data: Any) -> tuple[list[str], list[str], dict[str, Any]]
 def lint_text(text: str) -> tuple[list[str], list[str], dict[str, Any]]:
     errors: list[str] = []
     warnings: list[str] = []
-    timestamps = [timestamp_to_seconds(match) for match in TIMESTAMP_RE.finditer(text)]
+    # Chapter-heading lines (`## [12:00] Title`) are rendered metadata, not
+    # source transcript timing — they're injected by podcast_build from
+    # sidecar.episode.chapters. Strip them before the monotonic timestamp
+    # check so an LLM-rough chapter time doesn't fight a publisher's
+    # accurate inline timestamps (e.g. New Yorker transcripts include
+    # `[00:11:00]` markers that are authoritative). Speaker labels and
+    # unclear-marker counts are still scanned over the full text.
+    scan_text = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("## ")
+    )
+    timestamps = [timestamp_to_seconds(match) for match in TIMESTAMP_RE.finditer(scan_text)]
     speakers = [match.group(1).strip() for match in SPEAKER_RE.finditer(text)]
     unclear_count = len(UNCLEAR_RE.findall(text))
     words = re.findall(r"\b[\w'-]+\b", text)

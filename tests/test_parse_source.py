@@ -104,5 +104,145 @@ class ExtractInlineTranscriptTests(unittest.TestCase):
             self.assertEqual(staged.read_text(encoding="utf-8"), real_transcript)
 
 
+class ProseGuestMiningIsGone(unittest.TestCase):
+    """parse_source no longer ships prose-mining heuristics for the guest's
+    name (or the host's, or the new-book title). Those overfit one
+    publisher's voice and produced wrong guesses elsewhere. The current
+    pipeline asks the local Ollama model in resolve_speakers.py instead.
+
+    These tests are a tombstone — fail loudly if anyone reintroduces them.
+    """
+
+    def test_derive_guest_function_no_longer_exists(self) -> None:
+        parse_source = load_parse_source()
+        self.assertFalse(hasattr(parse_source, "derive_guest"))
+
+    def test_derive_host_function_no_longer_exists(self) -> None:
+        parse_source = load_parse_source()
+        self.assertFalse(hasattr(parse_source, "derive_host"))
+
+    def test_derive_book_function_no_longer_exists(self) -> None:
+        parse_source = load_parse_source()
+        self.assertFalse(hasattr(parse_source, "derive_book"))
+
+    def test_prose_regexes_no_longer_exist(self) -> None:
+        parse_source = load_parse_source()
+        for name in ("GUEST_RE", "HOST_PATTERN", "BOOK_PATTERN", "_TITLE_GUEST_RE"):
+            self.assertFalse(
+                hasattr(parse_source, name),
+                f"parse_source.{name} should be gone (replaced by resolve_speakers.py)",
+            )
+
+
+class NormalizeDateTests(unittest.TestCase):
+    def test_iso_timestamp_truncated_to_calendar_date(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(
+            parse_source._normalize_date("2026-04-13T06:00:00-04:00"),
+            "2026-04-13",
+        )
+
+    def test_already_calendar_date_unchanged(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(parse_source._normalize_date("2026-05-10"), "2026-05-10")
+
+    def test_empty_stays_empty(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(parse_source._normalize_date(""), "")
+
+    def test_garbage_passes_through_unchanged(self) -> None:
+        # Conservative: don't drop a value we don't recognize — let the next
+        # consumer decide (sidecar.validate will complain if it's malformed).
+        parse_source = load_parse_source()
+        self.assertEqual(parse_source._normalize_date("April 13"), "April 13")
+
+
+class BundleMetadataTests(unittest.TestCase):
+    """url_ingest bundles must round-trip Title/Podcast/Host/Guest/Date back
+    out of _source_input.txt so the sidecar populates `episode.title` and
+    `episode.podcast_title`. Strict sidecar validation rejects empty values.
+    """
+
+    def test_parse_bundle_metadata_reads_title_and_date(self) -> None:
+        parse_source = load_parse_source()
+        text = (
+            "Canonical URL: https://example.com/p/foo\n"
+            "Title: Sam Altman's Trust Issues at OpenAI\n"
+            "Date: 2026-04-13T06:00:00-04:00\n"
+        )
+        meta = parse_source.parse_bundle_metadata(text)
+        self.assertEqual(meta.get("title"), "Sam Altman's Trust Issues at OpenAI")
+        self.assertEqual(meta.get("date"), "2026-04-13T06:00:00-04:00")
+        self.assertEqual(meta.get("canonical url"), "https://example.com/p/foo")
+
+    def test_parse_bundle_metadata_ignores_non_metadata_colon_lines(self) -> None:
+        parse_source = load_parse_source()
+        text = (
+            "Title: Real Title\n"
+            "Doctorow's three-stage platform decay: ...prose with a colon.\n"
+            "Tim Ferriss: Hello.\n"  # SPEAKER_RE matches; not metadata
+        )
+        meta = parse_source.parse_bundle_metadata(text)
+        self.assertEqual(meta, {"title": "Real Title"})
+
+
+class DerivePodcastTitleTests(unittest.TestCase):
+    """Cover the publishers the V1 skill ships providers for, so the sidecar's
+    `episode.podcast_title` is populated and strict validation passes."""
+
+    def test_lennys_substack(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(
+            parse_source.derive_podcast_title(
+                ["https://www.lennysnewsletter.com/p/eric-ries"]
+            ),
+            "Lenny's Podcast: Product | Career | Growth",
+        )
+
+    def test_new_yorker_radio_hour_via_generic_podcast_path(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(
+            parse_source.derive_podcast_title(
+                ["https://www.newyorker.com/podcast/the-new-yorker-radio-hour/sam-altmans-trust-issues-at-openai"]
+            ),
+            "The New Yorker Radio Hour",
+        )
+
+    def test_tim_blog(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(
+            parse_source.derive_podcast_title(["https://tim.blog/2026/04/29/elad-gil/"]),
+            "The Tim Ferriss Show",
+        )
+
+    def test_foundmyfitness(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(
+            parse_source.derive_podcast_title(
+                ["https://www.foundmyfitness.com/episodes/arthur-brooks"]
+            ),
+            "FoundMyFitness",
+        )
+
+    def test_ninety_nine_percent_invisible(self) -> None:
+        parse_source = load_parse_source()
+        self.assertEqual(
+            parse_source.derive_podcast_title(
+                ["https://99percentinvisible.org/episode/666-enshittification/"]
+            ),
+            "99% Invisible",
+        )
+
+    def test_apple_podcasts_url_unchanged(self) -> None:
+        # Existing behavior must not regress.
+        parse_source = load_parse_source()
+        self.assertEqual(
+            parse_source.derive_podcast_title(
+                ["https://podcasts.apple.com/us/podcast/the-tim-ferriss-show/id863897795"]
+            ),
+            "The Tim Ferriss Show",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,5 +2,12 @@
   "id": "tim_blog",
   "domains": ["tim.blog"],
   "kind": "direct_transcript_link",
-  "transcript_link_contains": "transcript"
+  "transcript_link_contains": "transcript",
+  "podcast_title": "The Tim Ferriss Show",
+  "host": "Tim Ferriss",
+  "title_strip_suffix": [
+    " - The Blog of Author Tim Ferriss",
+    " — The Blog of Author Tim Ferriss",
+    " | The Blog of Author Tim Ferriss"
+  ]
 }
