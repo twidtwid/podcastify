@@ -78,7 +78,12 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Write to a temp file in the same dir then atomically rename, so a crash
+    # or kill mid-write can never leave a truncated JSON file that the next
+    # run's read_json would choke on (the pipeline runs parallel/killable).
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def esc_json_for_html(value: dict[str, Any]) -> str:
@@ -126,8 +131,17 @@ def resolve_transcript_path(episode_dir: Path, sidecar: dict[str, Any]) -> Path:
         episode_dir / "source" / "user-provided-transcript.txt",
         episode_dir / "final" / "transcript.verified.md",
     ])
+    derived_output = (episode_dir / "final" / "transcript.verified.md").resolve()
     for candidate in candidates:
         if candidate.exists():
+            if candidate.resolve() == derived_output:
+                print(
+                    f"WARN: transcript input fell back to the build's own prior output "
+                    f"{candidate} — raw transcript not found; the rebuilt package will be "
+                    f"a lossy second generation (structured turns lost). Restore the raw "
+                    f"transcript or re-run from source.",
+                    file=sys.stderr,
+                )
             return candidate
     raise FileNotFoundError("Could not find transcript input from sidecar or standard episode paths")
 
@@ -328,7 +342,7 @@ def build_package(episode_dir: Path) -> dict[str, Any]:
     structured_turns_path = resolve_structured_turns_path(episode_dir, transcript_path)
     turns = read_structured_turns(structured_turns_path) if structured_turns_path else []
     if not turns:
-        turns = parse_speaker_turns(transcript_path.read_text(encoding="utf-8"))
+        turns = parse_speaker_turns(transcript_path.read_text(encoding="utf-8", errors="replace"))
     turns = annotate_speaker_visibility(turns)
     chapters = build_chapters(sidecar, notes, turns)
     keywords = build_keywords(notes, chapters, turns)
@@ -466,13 +480,23 @@ def render_template(
     template = (ASSET_DIR / template_name).read_text(encoding="utf-8")
     css = (ASSET_DIR / "artifact.css").read_text(encoding="utf-8")
     app_js = (ASSET_DIR / "artifact.js").read_text(encoding="utf-8")
-    return (
-        template
-        .replace("{{TITLE}}", title)
-        .replace("{{HEAD_META}}", head_meta)
-        .replace("{{CSS}}", css)
-        .replace("{{APP_JS}}", app_js)
-        .replace("{{DATA_JSON}}", esc_json_for_html(package))
+    # title lands in HTML text/attribute context and is derived from scraped
+    # episode metadata, so it MUST be escaped. head_meta is already-escaped
+    # markup from build_head_meta(); css/app_js/data are trusted assets.
+    substitutions = {
+        "TITLE": html.escape(title),
+        "HEAD_META": head_meta,
+        "CSS": css,
+        "APP_JS": app_js,
+        "DATA_JSON": esc_json_for_html(package),
+    }
+    # Single pass over the ORIGINAL template: substituted content is never
+    # re-scanned, so a field containing a literal "{{DATA_JSON}}" (etc.)
+    # cannot trigger a second-pass expansion / content injection.
+    return re.sub(
+        r"\{\{(TITLE|HEAD_META|CSS|APP_JS|DATA_JSON)\}\}",
+        lambda m: substitutions[m.group(1)],
+        template,
     )
 
 

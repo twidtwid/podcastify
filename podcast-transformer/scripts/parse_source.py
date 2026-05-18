@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -329,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: input file not found: {args.input_file}", file=sys.stderr)
         return 2
 
-    text = args.input_file.read_text(encoding="utf-8")
+    text = args.input_file.read_text(encoding="utf-8", errors="replace")
     urls = [clean_url(u) for u in URL_RE.findall(text)]
     # Dedupe preserving order
     seen: set[str] = set()
@@ -401,9 +402,14 @@ def main(argv: list[str] | None = None) -> int:
         "inline_transcript_chars": len(transcript),
     }
 
-    (ep / "working" / "_parsed.json").write_text(
+    # Atomic write: a kill mid-write must not leave _parsed.json truncated for
+    # the downstream extract_one read.
+    _parsed_path = ep / "working" / "_parsed.json"
+    _parsed_tmp = _parsed_path.with_name(_parsed_path.name + ".tmp")
+    _parsed_tmp.write_text(
         json.dumps(parsed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+    os.replace(_parsed_tmp, _parsed_path)
 
     if transcript:
         out_path = ep / "source" / "user-provided-transcript.txt"

@@ -109,11 +109,23 @@ def _draw_tracked(
 
 
 def _truncate(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int) -> str:
+    # Defensive hard cap: far more than can ever fit one line, but bounds the
+    # string handed to Pillow's text measurement regardless of caller (Pillow
+    # raises on >1M-char strings; never measure a pathological input).
+    if len(text) > 2000:
+        text = text[:2000]
     if _text_w(draw, text, font) <= max_w:
         return text
-    while text and _text_w(draw, text + "…", font) > max_w:
-        text = text[:-1]
-    return text + "…"
+    # Binary search the longest prefix that fits, O(log n) measurements
+    # instead of one measurement per dropped character (O(n^2) on long input).
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _text_w(draw, text[:mid] + "…", font) <= max_w:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo] + "…"
 
 
 def _fmt_duration(seconds: Any) -> str:
@@ -129,10 +141,16 @@ def _fmt_duration(seconds: Any) -> str:
 
 def generate_og_card(package: dict[str, Any], out_path: Path, public_base: str = "") -> Path:
     ep = package.get("episode", {})
-    short_title = (ep.get("short_title") or ep.get("title") or "Untitled episode").strip()
-    podcast_title = (ep.get("podcast_title") or "").strip()
-    guests = ep.get("guests") or []
-    hosts = ep.get("hosts") or []
+    if not isinstance(ep, dict):
+        ep = {}
+    # Coerce to str and clamp before any text measurement: these fields come
+    # from scraped/untrusted metadata. Without a length bound a pathological
+    # title/guest list drives the wrapping/measuring loops into a long CPU
+    # spin (the caller's best-effort try/except catches exceptions, not hangs).
+    short_title = (str(ep.get("short_title") or ep.get("title") or "Untitled episode")).strip()[:300]
+    podcast_title = (str(ep.get("podcast_title") or "")).strip()[:200]
+    guests = [str(g).strip()[:120] for g in (ep.get("guests") or []) if str(g).strip()][:10]
+    hosts = [str(h).strip()[:120] for h in (ep.get("hosts") or []) if str(h).strip()][:10]
     duration = _fmt_duration(ep.get("duration_seconds"))
 
     img = Image.new("RGB", (W, H), PAPER)
@@ -150,7 +168,10 @@ def generate_og_card(package: dict[str, Any], out_path: Path, public_base: str =
 
     # Title block.
     title_font, title_lines = _fit_title(draw, short_title, CONTENT_W)
-    line_h = int(title_font.size * 1.14)
+    # ImageFont.load_default() (the no-font fallback on a host missing every
+    # candidate) has no .size on older Pillow — degrade instead of crashing.
+    title_size = getattr(title_font, "size", 0) or 64
+    line_h = int(title_size * 1.14)
     y = 168
     for line in title_lines:
         draw.text((x0, y), line, font=title_font, fill=INK)
