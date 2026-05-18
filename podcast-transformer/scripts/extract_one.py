@@ -297,7 +297,13 @@ def extract_substack_section(raw_path: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source_file")
-    p.add_argument("--out-root", type=Path, default=REPO_ROOT / "podcast-output")
+    p.add_argument(
+        "--out-root",
+        type=Path,
+        default=Path(os.environ.get("PODCAST_OUTPUT_ROOT", REPO_ROOT / "podcast-output")),
+        help="where rendered episode packages + index.html go "
+             "(env: PODCAST_OUTPUT_ROOT; flag overrides env)",
+    )
     p.add_argument("--slug", default=None)
     p.add_argument("--skip-fetch", action="store_true",
                    help="if source/transcript_raw.txt already exists, don't refetch")

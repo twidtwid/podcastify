@@ -1743,7 +1743,7 @@ Edit `SKILL.md` so the first workflow path is:
 Run:
 
 ```bash
-/Users/todd_1/homebrew/bin/rg -n "browse-cli|browse init|pepijnsenders|Chrome extension|required|prerequisite|BROWSERLESS_TOKEN|FIRECRAWL_API_KEY|BROWSER_USE_API_KEY|Playwright|dump-dom" README.md SKILL.md podcast-transformer
+rg -n "browse-cli|browse init|pepijnsenders|Chrome extension|required|prerequisite|BROWSERLESS_TOKEN|FIRECRAWL_API_KEY|BROWSER_USE_API_KEY|Playwright|dump-dom" README.md SKILL.md podcast-transformer
 ```
 
 Expected: any remaining browser-tool references describe them as optional or fallback.
