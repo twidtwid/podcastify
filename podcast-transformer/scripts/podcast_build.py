@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
+import os
 import re
 import subprocess
 import sys
@@ -11,8 +13,59 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from og_card import generate_og_card
+
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = SKILL_ROOT / "assets" / "podcast-html"
+
+# Public base URL where the rendered library is served. Used to build
+# absolute og:url / og:image so Slack/Discord/X can unfurl a rich card.
+# Override with PODCAST_PUBLIC_BASE_URL; the localhost default works with
+# `python -m http.server` but a real social unfurl needs a publicly
+# reachable URL (e.g. a tunnel or static host).
+DEFAULT_PUBLIC_BASE = "http://localhost:8000"
+
+
+def public_base() -> str:
+    return os.environ.get("PODCAST_PUBLIC_BASE_URL", DEFAULT_PUBLIC_BASE).rstrip("/")
+
+
+def _meta(prop: str, content: str, *, name: bool = False) -> str:
+    attr = "name" if name else "property"
+    return f'<meta {attr}="{html.escape(prop, quote=True)}" content="{html.escape(content, quote=True)}">'
+
+
+def build_head_meta(package: dict[str, Any], slug: str, filename: str) -> str:
+    """Open Graph + Twitter card tags for a rich social unfurl."""
+    ep = package.get("episode", {})
+    title = (ep.get("short_title") or ep.get("title") or "Podcast briefing").strip()
+    desc = re.sub(r"\s+", " ", (ep.get("description") or "").strip())
+    if len(desc) > 300:
+        desc = desc[:299].rstrip() + "…"
+    guests = ", ".join(ep.get("guests") or [])
+    if guests and guests.lower() not in desc.lower():
+        desc = f"{guests} — {desc}" if desc else f"Conversation with {guests}."
+    site = (ep.get("podcast_title") or "Podcast library").strip()
+    base = public_base()
+    page_url = f"{base}/{slug}/final/{filename}"
+    image_url = f"{base}/{slug}/final/og-card.png"
+    tags = [
+        _meta("og:type", "article"),
+        _meta("og:site_name", site),
+        _meta("og:title", title),
+        _meta("og:description", desc),
+        _meta("og:url", page_url),
+        _meta("og:image", image_url),
+        _meta("og:image:width", "1200"),
+        _meta("og:image:height", "630"),
+        _meta("twitter:card", "summary_large_image", name=True),
+        _meta("twitter:title", title, name=True),
+        _meta("twitter:description", desc, name=True),
+        _meta("twitter:image", image_url, name=True),
+        _meta("description", desc, name=True),
+    ]
+    return "\n".join(tags)
 
 
 def utc_now() -> str:
@@ -407,13 +460,16 @@ def sync_uncertain_spans(episode_dir: Path, package: dict[str, Any]) -> None:
         write_json(sidecar_path, sidecar)
 
 
-def render_template(template_name: str, package: dict[str, Any], title: str) -> str:
+def render_template(
+    template_name: str, package: dict[str, Any], title: str, head_meta: str = ""
+) -> str:
     template = (ASSET_DIR / template_name).read_text(encoding="utf-8")
     css = (ASSET_DIR / "artifact.css").read_text(encoding="utf-8")
     app_js = (ASSET_DIR / "artifact.js").read_text(encoding="utf-8")
     return (
         template
         .replace("{{TITLE}}", title)
+        .replace("{{HEAD_META}}", head_meta)
         .replace("{{CSS}}", css)
         .replace("{{APP_JS}}", app_js)
         .replace("{{DATA_JSON}}", esc_json_for_html(package))
@@ -433,20 +489,27 @@ def render_artifacts(episode_dir: Path, package: dict[str, Any], only: str = "al
     final_dir.mkdir(parents=True, exist_ok=True)
     write_json(final_dir / "episode.package.json", package)
     write_verified_transcript(package, final_dir)
+    slug = episode_dir.name
+    try:
+        generate_og_card(package, final_dir / "og-card.png", public_base())
+    except Exception as exc:  # card is best-effort; never fail the build on it
+        print(f"WARN: og-card render skipped ({exc})", file=sys.stderr)
     if only in {"all", "transcript"}:
-        html = render_template(
+        markup = render_template(
             "transcript-browser.html.tmpl",
             package,
             f"{package['episode']['short_title']} - Transcript",
+            build_head_meta(package, slug, "annotated-transcript.html"),
         )
-        (final_dir / "annotated-transcript.html").write_text(html, encoding="utf-8")
+        (final_dir / "annotated-transcript.html").write_text(markup, encoding="utf-8")
     if only in {"all", "glance"}:
-        html = render_template(
+        markup = render_template(
             "glance-dashboard.html.tmpl",
             slim_for_glance(package),
             f"{package['episode']['short_title']} - Briefing",
+            build_head_meta(package, slug, "podcast-at-a-glance.html"),
         )
-        (final_dir / "podcast-at-a-glance.html").write_text(html, encoding="utf-8")
+        (final_dir / "podcast-at-a-glance.html").write_text(markup, encoding="utf-8")
 
 
 # Patterns that indicate AI-slop regression in the rendered HTML.
