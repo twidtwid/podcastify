@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -167,13 +168,19 @@ footer.lib-colophon { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px sol
 def build_index(library_root: Path) -> Path:
     entries = discover_episodes(library_root)
     css = (ASSET_DIR / "artifact.css").read_text(encoding="utf-8")
-    html_doc = (
-        INDEX_TEMPLATE
-        .replace("{{CSS}}", css)
-        .replace("{{COUNT}}", str(len(entries)))
-        .replace("{{PLURAL}}", "" if len(entries) == 1 else "s")
-        .replace("{{GENERATED_AT}}", utc_now())
-        .replace("{{ENTRIES}}", render_entries(entries))
+    substitutions = {
+        "CSS": css,
+        "COUNT": str(len(entries)),
+        "PLURAL": "" if len(entries) == 1 else "s",
+        "GENERATED_AT": utc_now(),
+        "ENTRIES": render_entries(entries),
+    }
+    # Single pass over the original template so rendered entry content (derived
+    # from scraped episode metadata) can never re-expand a later token.
+    html_doc = re.sub(
+        r"\{\{(CSS|COUNT|PLURAL|GENERATED_AT|ENTRIES)\}\}",
+        lambda m: substitutions[m.group(1)],
+        INDEX_TEMPLATE,
     )
     out = library_root / "index.html"
     out.write_text(html_doc, encoding="utf-8")

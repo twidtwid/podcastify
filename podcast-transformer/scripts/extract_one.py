@@ -206,7 +206,7 @@ def extract_article_title(raw_path: Path, podcast_title: str) -> str:
     The episode title is the longest meaningful line before the first
     transcript timestamp, excluding the podcast title and image/audio UI.
     Returns empty string if it can't find one."""
-    text = raw_path.read_text(encoding="utf-8")
+    text = raw_path.read_text(encoding="utf-8", errors="replace")
     import re as _re
     ts_re = _re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
     podcast_norm = podcast_title.lower().strip() if podcast_title else ""
@@ -251,7 +251,7 @@ def extract_substack_section(raw_path: Path) -> None:
 
     If the raw file already starts with the timestamp pattern, leave it alone.
     """
-    text = raw_path.read_text(encoding="utf-8")
+    text = raw_path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
     # Find the first "<ts> … <NAME> … text" sequence (NAME = ALL CAPS or
     # Title Case, 2-4 words). Browse-cli inserts blank lines between fields.
@@ -567,7 +567,9 @@ def main(argv: list[str] | None = None) -> int:
         canonical_title = (sidecar.get("episode", {}).get("title") or "").strip()
         draft_short = (notes.get("short_title") or "").strip()
         notes["short_title"] = _shorten_for_chrome(canonical_title, draft_short)
-        final.write_text(json.dumps(notes, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        _final_tmp = final.with_name(final.name + ".tmp")
+        _final_tmp.write_text(json.dumps(notes, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(_final_tmp, final)
 
     step("promote_notes", "script", episode_dir, _promote)
 
@@ -587,10 +589,12 @@ def main(argv: list[str] | None = None) -> int:
     # (the inline-transcript path doesn't produce _turn_timestamps.json).
     def _anchor() -> None:
         chapters_json = episode_dir / "working" / "_chapters.json"
-        chapters_json.write_text(
+        _chapters_tmp = chapters_json.with_name(chapters_json.name + ".tmp")
+        _chapters_tmp.write_text(
             json.dumps(parsed["chapters"], indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
+        os.replace(_chapters_tmp, chapters_json)
         turns_json = episode_dir / "working" / "_turn_timestamps.json"
         out_path = episode_dir / "working" / "_chapter_queries.json"
         if not parsed["chapters"] or not turns_json.exists():

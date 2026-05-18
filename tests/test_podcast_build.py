@@ -175,5 +175,55 @@ class SpeakerVisibilityTests(unittest.TestCase):
         self.assertIn('class="speaker"', js)
 
 
+class TemplateHardeningTests(unittest.TestCase):
+    def test_render_template_escapes_title(self) -> None:
+        # short_title is scraped/untrusted and lands in <title>; a crafted
+        # value must not break out into executable markup.
+        podcast_build = load_podcast_build()
+        evil = "</title><script>alert(document.cookie)</script>"
+        out = podcast_build.render_template(
+            "transcript-browser.html.tmpl", {"episode": {}}, evil
+        )
+        self.assertNotIn("<script>alert(document.cookie)</script>", out)
+        self.assertIn("&lt;script&gt;", out)
+
+    def test_render_template_single_pass_no_token_reexpansion(self) -> None:
+        # A title containing a literal later token must NOT be expanded by a
+        # subsequent substitution pass (no content injection / duplication).
+        podcast_build = load_podcast_build()
+        package = {"episode": {"marker": "UNIQUE_DATA_MARKER"}}
+        out = podcast_build.render_template(
+            "transcript-browser.html.tmpl", package, "{{DATA_JSON}}"
+        )
+        # The real {{DATA_JSON}} slot expands exactly once; the literal
+        # "{{DATA_JSON}}" carried in the title is not re-expanded.
+        self.assertEqual(out.count("UNIQUE_DATA_MARKER"), 1)
+        self.assertIn("{{DATA_JSON}}", out)
+
+    def test_write_json_is_atomic_and_leaves_no_tmp(self) -> None:
+        podcast_build = load_podcast_build()
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "nested" / "out.json"
+            podcast_build.write_json(target, {"a": 1})
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"a": 1})
+            self.assertEqual(list(target.parent.glob("*.tmp")), [])
+
+    def test_resolve_transcript_path_warns_on_derived_output_fallback(self) -> None:
+        import io
+        import contextlib
+
+        podcast_build = load_podcast_build()
+        with tempfile.TemporaryDirectory() as tmp:
+            ep = Path(tmp)
+            (ep / "final").mkdir(parents=True, exist_ok=True)
+            (ep / "final" / "transcript.verified.md").write_text("x", encoding="utf-8")
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                resolved = podcast_build.resolve_transcript_path(ep, {})
+            self.assertEqual(resolved, ep / "final" / "transcript.verified.md")
+            self.assertIn("WARN", stderr.getvalue())
+            self.assertIn("prior output", stderr.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
