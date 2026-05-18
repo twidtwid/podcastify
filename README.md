@@ -175,13 +175,15 @@ These are fallback tools, not install prerequisites.
 
 ## Configure
 
-Three env vars cover the model knobs. Defaults work out of the box.
+These env vars cover the model and location knobs. Defaults work out of the box.
 
 | Env var | Default | Used by |
 |---|---|---|
 | `PODCAST_DRAFT_MODEL` | `gemma4:e4b-nvfp4` | bulk drafting + entity enumeration |
 | `PODCAST_SHARPEN_MODEL` | `qwen3.6:35B-a3b-nvfp4` | per-item rewrites + entity categorization |
 | `PODCAST_OLLAMA_URL` | `http://localhost:11434/api/chat` | Ollama endpoint (point at a remote LAN host if you don't want both models locally) |
+| `PODCAST_OUTPUT_ROOT` | `<repo>/podcast-output` | where rendered episode packages and the library `index.html` are written (`--out-root` overrides it) |
+| `PODCAST_PUBLIC_BASE_URL` | `http://localhost:8000` | absolute base for `og:url`/`og:image` in the social card. Point at wherever you serve `PODCAST_OUTPUT_ROOT`; a real unfurl needs a publicly reachable URL |
 
 Dump the active config any time:
 
