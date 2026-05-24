@@ -1,0 +1,8 @@
+{
+  "id": "youtube",
+  "domains": ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"],
+  "kind": "youtube_captions",
+  "podcast_title": "",
+  "host": "",
+  "speaker_alternation_turns": 60
+}

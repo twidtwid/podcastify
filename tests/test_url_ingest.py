@@ -40,6 +40,7 @@ class UrlIngestManifestTests(unittest.TestCase):
                 "99pi",
                 "conversations_with_tyler",
                 "dwarkesh",
+                "youtube",
             },
         )
 
@@ -55,6 +56,7 @@ class UrlIngestManifestTests(unittest.TestCase):
                 "lenny_substack.json",
                 "new_yorker.json",
                 "tim_blog.json",
+                "youtube.json",
             ],
         )
 

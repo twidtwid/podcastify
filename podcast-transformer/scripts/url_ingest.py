@@ -12,7 +12,10 @@ import argparse
 import html
 import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -1009,6 +1012,209 @@ def ingest_direct_transcript_link(
     return write_bundle(bundle, out_root)
 
 
+# ── YouTube auto-captions fallback ────────────────────────────────────────────
+# When a podcast is published outside the supported-publisher list, or its
+# transcript page has not been posted yet, the YouTube version is often the
+# only available transcript source. This provider pulls auto-captions via
+# yt-dlp, normalizes the VTT, and produces a bundle the rest of the pipeline
+# consumes unmodified. Speaker labels are approximate (auto-captions carry no
+# speaker info) — alternation between Host/Guest is a proxy that gets the
+# inline-transcript detector past its ≥3-turns threshold and gives resolve_speakers
+# a starting point. Content-driven outputs (notes, claims, terminology) are
+# unaffected by the approximation; the annotated-transcript view is best-guess.
+
+
+def _clean_youtube_vtt(vtt_text: str) -> str:
+    """Strip headers, timestamp markers, inline cue tags, and dedupe lines.
+
+    YouTube auto-VTT uses progressive caption display — each line appears many
+    times as the caption builds up. Deduping by exact-line, first-occurrence,
+    yields a clean chronological transcript.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in vtt_text.splitlines():
+        if raw.startswith(("WEBVTT", "Kind:", "Language:")) or not raw.strip():
+            continue
+        if "-->" in raw:
+            continue
+        cleaned = re.sub(r"<[^>]+>", "", raw).strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        out.append(cleaned)
+    return re.sub(r"\s+", " ", " ".join(out)).strip()
+
+
+def _chunk_into_speaker_turns(
+    transcript: str,
+    speakers: tuple[str, str] = ("Host", "Guest"),
+    target_turns: int = 60,
+) -> list[str]:
+    """Sentence-split + chunk into alternating speaker lines.
+
+    The inline-transcript detector in parse_source requires ≥3 speaker turns.
+    Auto-captions carry no speaker info, so we alternate between Host/Guest as
+    a proxy. resolve_speakers downstream can refine attribution from content
+    cues; the bundle just needs *some* turn structure to clear the detector.
+    """
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", transcript) if s.strip()]
+    if not sentences:
+        return []
+    chunk_size = max(1, len(sentences) // max(1, target_turns))
+    turns: list[str] = []
+    for i in range(0, len(sentences), chunk_size):
+        chunk = " ".join(sentences[i : i + chunk_size]).strip()
+        if chunk:
+            sp = speakers[len(turns) % 2]
+            turns.append(f"{sp}: {chunk}")
+    return turns
+
+
+def _format_youtube_chapters(info: dict[str, Any]) -> list[dict[str, str]]:
+    chapters = info.get("chapters") or []
+    formatted: list[dict[str, str]] = []
+    for c in chapters:
+        try:
+            seconds = int(c["start_time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        timestamp = f"{seconds // 60:02d}:{seconds % 60:02d}"
+        title = (c.get("title") or "").strip() or "Untitled chapter"
+        formatted.append({"timestamp": timestamp, "title": title})
+    return formatted
+
+
+def _resolve_yt_dlp() -> str:
+    """Locate yt-dlp; raise UrlIngestError with a clear install hint if missing."""
+    path = shutil.which("yt-dlp")
+    if path:
+        return path
+    # Common Homebrew install path on macOS — surface it if yt-dlp isn't on PATH.
+    fallback = Path.home() / "homebrew" / "bin" / "yt-dlp"
+    if fallback.exists():
+        return str(fallback)
+    raise UrlIngestError(
+        "yt-dlp is required for the youtube_captions provider but was not found "
+        "on PATH. Install with `brew install yt-dlp` (Homebrew) or "
+        "`pipx install yt-dlp`, then retry."
+    )
+
+
+def ingest_youtube_captions(
+    url: str,
+    provider: dict[str, Any],
+    out_root: Path,
+    *,
+    slug: str | None,
+    fetcher: Callable[[str], tuple[int, str, bytes]],
+    canonical_url_override: str | None = None,
+) -> Path:
+    """Build a bundle from a YouTube video's auto-captions + info.json metadata.
+
+    `fetcher` is accepted for signature symmetry with other ingest functions but
+    not used — yt-dlp handles its own HTTP. `canonical_url_override` lets a
+    resource file pin a publisher URL as the canonical source while still
+    routing the transcript fetch through this provider.
+    """
+    yt_dlp = _resolve_yt_dlp()
+    with tempfile.TemporaryDirectory(prefix="podcastify-yt-") as tmp:
+        tmp_path = Path(tmp)
+        cmd = [
+            yt_dlp,
+            "--skip-download",
+            "--write-auto-subs",
+            "--sub-langs",
+            "en.*,en",
+            "--sub-format",
+            "vtt",
+            "--write-info-json",
+            "--no-warnings",
+            "-o",
+            str(tmp_path / "ep.%(ext)s"),
+            url,
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as exc:
+            tail = (exc.stderr or "").strip().splitlines()[-3:]
+            raise UrlIngestError(
+                f"yt-dlp failed for {url}: {' / '.join(tail) or exc.returncode}"
+            ) from exc
+
+        info_path = tmp_path / "ep.info.json"
+        if not info_path.exists():
+            raise UrlIngestError(f"yt-dlp did not produce info.json for {url}")
+        info = json.loads(info_path.read_text(encoding="utf-8"))
+
+        # yt-dlp picks one of en-orig.vtt / en.vtt / en-*.vtt depending on what
+        # the video has available. Prefer the original ("en-orig") if present,
+        # else fall back to whichever en* VTT was written.
+        vtt_candidates = sorted(tmp_path.glob("ep.en*.vtt"))
+        if not vtt_candidates:
+            raise UrlIngestError(
+                f"yt-dlp produced no English auto-captions for {url}. "
+                "This video may not have auto-captions enabled."
+            )
+        # en-orig.vtt is the source-language original; prefer it.
+        preferred = next((p for p in vtt_candidates if "orig" in p.name), vtt_candidates[0])
+        vtt_text = preferred.read_text(encoding="utf-8")
+
+    transcript = _clean_youtube_vtt(vtt_text)
+    if not transcript:
+        raise UrlIngestError(
+            f"YouTube VTT cleanup produced an empty transcript for {url}"
+        )
+
+    target_turns = int(provider.get("speaker_alternation_turns") or 60)
+    host = (provider.get("host") or info.get("uploader") or "Host").strip()
+    # Without a known guest name we use "Guest" — resolve_speakers can refine.
+    turns = _chunk_into_speaker_turns(transcript, speakers=(host, "Guest"), target_turns=target_turns)
+    if len(turns) < 3:
+        raise UrlIngestError(
+            f"YouTube auto-captions too short to produce ≥3 speaker turns for {url}"
+        )
+
+    title = (info.get("title") or "").strip()
+    video_id = info.get("id") or ""
+    upload_date = info.get("upload_date") or ""  # YYYYMMDD
+    iso_date = ""
+    if re.fullmatch(r"\d{8}", upload_date):
+        iso_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+
+    page_metadata: dict[str, Any] = {}
+    if iso_date:
+        page_metadata["date"] = iso_date
+    if info.get("uploader"):
+        page_metadata.setdefault("podcast_title", provider.get("podcast_title") or info["uploader"])
+    if provider.get("host"):
+        page_metadata.setdefault("host", provider["host"])
+    if info.get("duration"):
+        page_metadata["duration_seconds"] = info["duration"]
+
+    bundle_slug = slug or slugify(title or video_id or provider["id"])
+    canonical = canonical_url_override or url
+
+    bundle = SourceBundle(
+        provider_id=provider["id"],
+        input_url=url,
+        canonical_url=canonical,
+        slug=bundle_slug,
+        title=strip_title_boilerplate(title, provider),
+        transcript_text="\n".join(turns) + "\n",
+        transcript_source_url=url,
+        metadata=page_metadata,
+        chapters=_format_youtube_chapters(info),
+        links=[],
+        warnings=[
+            "Transcript sourced from YouTube auto-captions; speaker labels "
+            "are approximate (alternating proxy). Content-driven outputs are "
+            "unaffected.",
+        ],
+    )
+    return write_bundle(bundle, out_root)
+
+
 def ingest_url(
     url: str,
     out_root: Path = DEFAULT_OUT_ROOT,
@@ -1037,6 +1243,14 @@ def ingest_url(
         )
     if kind == "substack":
         return ingest_substack(
+            url,
+            provider,
+            out_root,
+            slug=slug,
+            fetcher=fetcher,
+        )
+    if kind == "youtube_captions":
+        return ingest_youtube_captions(
             url,
             provider,
             out_root,
