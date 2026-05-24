@@ -73,7 +73,8 @@ The briefing's right-column "inspector" shows every entry as a clickable chip wi
 
 # Required counts
 
-- Aim for **25–35 entries** total. Cover every distinct entity worth a click. Under 20 is too sparse; over 40 is over-cataloging.
+- Output **25–35 entries total. 35 is a hard ceiling** — once you have emitted 35, stop, even if more entities exist in the transcript. Keep the 35 most click-worthy. Under 20 is too sparse.
+- Pick the entities a reader is most likely to not recognize and want context on. Skip household names and one-off mentions when you are near the ceiling.
 - Mix of categories — typically: ~8 people, ~12 organizations/companies, ~2–3 books, ~6–8 concepts.
 
 # Hard rules
@@ -81,8 +82,16 @@ The briefing's right-column "inspector" shows every entry as a clickable chip wi
 - **Use the guest's actual phrasing** for concept names. If the guest said "financial gravity", the term is "financial gravity" (not "Financial Gravity" or "the financial-gravity principle").
 - **No URLs** — those are merged in by a downstream script from the publisher's show notes. Omit the `url` field entirely from your output.
 - **Notes are 12-25 words**. They orient the reader, not summarize the conversation. Bad: "Eric Ries discusses this concept in detail." Good: "The predictable force that drags successful companies into mediocrity once their golden goose attracts butchers."
+- **Never exceed 35 entries.** A dense, jargon-heavy episode still gets at most 35 — curate, do not catalog.
 - **Output ONLY valid JSON.** First character `{`, last character `}`. No markdown fences. No commentary.
 """
+
+# Hard ceiling on terminology entries. The briefing inspector is a scannable
+# rail, not an index — past ~35 chips it stops being useful. A dense technical
+# episode can push the draft model to emit 80+ entries and blow the
+# `num_predict` budget mid-object; `_parse_terminology` salvages the truncated
+# array and `_cap_terms` trims the merged result back to this ceiling.
+MAX_TERMS = 35
 
 USER_TEMPLATE = """# Episode metadata
 
@@ -135,6 +144,73 @@ def call_ollama(model: str, system: str, user: str, num_ctx: int) -> str:
     with urllib.request.urlopen(req, timeout=900) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     return payload.get("message", {}).get("content", "")
+
+
+def _parse_terminology(raw: str) -> list[dict]:
+    """Return the `terminology` array from the model's JSON output.
+
+    Tolerates a truncated array: when a long-output run hits the
+    `num_predict` ceiling mid-object, every COMPLETE object emitted before
+    the cutoff is kept and the dangling fragment is discarded — rather than
+    hard-failing the whole step on an unterminated array. Raises ValueError
+    only when no terminology array can be located at all.
+    """
+    s = raw.strip()
+    if s.startswith("```"):
+        s = s.split("```", 2)[1]
+        if s.startswith("json\n"):
+            s = s[5:]
+        s = s.rstrip("`").strip()
+    # Fast path: well-formed JSON object.
+    try:
+        payload = json.loads(s)
+        terms = payload.get("terminology")
+        if isinstance(terms, list):
+            return [t for t in terms if isinstance(t, dict)]
+    except json.JSONDecodeError:
+        pass
+    # Salvage path: walk the terminology array object-by-object so a
+    # truncated tail loses only the final incomplete entry.
+    key_at = s.find('"terminology"')
+    array_start = s.find("[", key_at) if key_at >= 0 else -1
+    if array_start < 0:
+        raise ValueError("No terminology array found in model output")
+    decoder = json.JSONDecoder()
+    terms: list[dict] = []
+    i = array_start + 1
+    n = len(s)
+    while i < n:
+        while i < n and s[i] in " \t\r\n,":
+            i += 1
+        if i >= n or s[i] == "]":
+            break
+        try:
+            obj, end = decoder.raw_decode(s, i)
+        except json.JSONDecodeError:
+            break  # dangling truncated object — keep what came before it
+        if isinstance(obj, dict):
+            terms.append(obj)
+        i = end
+    return terms
+
+
+def _cap_terms(terms: list[dict], limit: int = MAX_TERMS) -> list[dict]:
+    """Trim an over-long terminology list to `limit`, in original order.
+
+    Entries that already carry a show-notes `url` are publisher-curated and
+    never dropped — only un-linked LLM-enumerated entries are trimmed.
+    """
+    if len(terms) <= limit:
+        return terms
+    order = {id(t): pos for pos, t in enumerate(terms)}
+    keep = [t for t in terms if t.get("url")]
+    for t in terms:
+        if len(keep) >= limit:
+            break
+        if not t.get("url"):
+            keep.append(t)
+    keep.sort(key=lambda t: order[id(t)])
+    return keep
 
 
 def fmt_chapters(sidecar: dict) -> str:
@@ -266,8 +342,8 @@ def main(argv: list[str] | None = None) -> int:
     raw = call_ollama(args.model, SYSTEM_PROMPT, user_prompt, args.num_ctx)
 
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as e:
+        new_terms = _parse_terminology(raw)
+    except ValueError as e:
         debug_path = ep / "working" / "_terminology_draft_raw.txt"
         debug_path.parent.mkdir(parents=True, exist_ok=True)
         debug_path.write_text(raw, encoding="utf-8")
@@ -275,14 +351,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  raw saved to {debug_path}", file=sys.stderr)
         return 2
 
-    new_terms = payload.get("terminology") or []
-    if not isinstance(new_terms, list):
-        print(f"ERROR: model returned non-list terminology: {type(new_terms).__name__}", file=sys.stderr)
+    if not new_terms:
+        debug_path = ep / "working" / "_terminology_draft_raw.txt"
+        debug_path.parent.mkdir(parents=True, exist_ok=True)
+        debug_path.write_text(raw, encoding="utf-8")
+        print("ERROR: model produced no usable terminology entries", file=sys.stderr)
+        print(f"  raw saved to {debug_path}", file=sys.stderr)
         return 2
 
     print(f"existing: {len(existing_terms)} entries, new from LLM: {len(new_terms)} entries",
           file=sys.stderr)
     merged = merge_terms(existing_terms, new_terms)
+    capped = _cap_terms(merged)
+    if len(capped) < len(merged):
+        print(f"capped {len(merged)} -> {len(capped)} entries (MAX_TERMS={MAX_TERMS})",
+              file=sys.stderr)
+    merged = capped
     print(f"after merge: {len(merged)} entries", file=sys.stderr)
 
     if args.dry_run:
