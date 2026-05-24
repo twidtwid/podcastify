@@ -472,6 +472,29 @@ class UrlIngestYoutubeHelperTests(unittest.TestCase):
         # first-occurrence dedupe keeps the line order; whitespace collapsed.
         self.assertEqual(cleaned, "Hello Hello world How are you")
 
+    def test_clean_vtt_preserves_non_adjacent_repeated_utterances(self) -> None:
+        # Earlier implementation deduped via a global `seen: set`, so any
+        # short utterance the speaker actually repeated later in the
+        # transcript ("Right.", "Yeah.") was silently dropped on its second
+        # appearance. Prior-line dedupe still collapses the consecutive
+        # progressive-build duplicates but preserves real repeats.
+        vtt = "\n".join([
+            "WEBVTT",
+            "",
+            "00:00:00.000 --> 00:00:01.000",
+            "Right.",
+            "",
+            "00:00:01.000 --> 00:00:02.000",
+            "I see what you mean.",
+            "",
+            "00:00:02.000 --> 00:00:03.000",
+            "Right.",
+        ])
+        cleaned = self.url_ingest._clean_youtube_vtt(vtt)
+        # Both "Right." occurrences survive — only consecutive duplicates
+        # (build-up artefacts) get collapsed.
+        self.assertEqual(cleaned, "Right. I see what you mean. Right.")
+
     def test_clean_vtt_empty_input_returns_empty_string(self) -> None:
         self.assertEqual(self.url_ingest._clean_youtube_vtt(""), "")
         self.assertEqual(
@@ -493,6 +516,25 @@ class UrlIngestYoutubeHelperTests(unittest.TestCase):
                       "And finally sentence three.")
         turns = self.url_ingest._chunk_into_speaker_turns(transcript, target_turns=3)
         # Strip speaker prefixes, rejoin: every word from the source survives.
+        bodies = " ".join(t.split(": ", 1)[1] for t in turns)
+        for word in transcript.split():
+            self.assertIn(word, bodies)
+
+    def test_chunk_falls_back_to_word_chunking_when_punctuation_is_missing(self) -> None:
+        # ASR-only YouTube auto-captions arrive without sentence-ending
+        # punctuation, so the regex split produces ONE "sentence" — without
+        # the fallback that's exactly 1 turn and the caller's `len(turns)<3`
+        # guard would raise on every such video. The word-based fallback
+        # delivers the requested turn count instead.
+        transcript = " ".join([f"word{i}" for i in range(120)])
+        turns = self.url_ingest._chunk_into_speaker_turns(
+            transcript, target_turns=6)
+        self.assertGreaterEqual(len(turns), 3)
+        # Strict alternation survives the fallback path.
+        for i, turn in enumerate(turns):
+            expected = "Host" if i % 2 == 0 else "Guest"
+            self.assertTrue(turn.startswith(f"{expected}: "), turn)
+        # Every input word is still represented in the output.
         bodies = " ".join(t.split(": ", 1)[1] for t in turns)
         for word in transcript.split():
             self.assertIn(word, bodies)

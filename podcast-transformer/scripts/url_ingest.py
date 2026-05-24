@@ -1027,21 +1027,25 @@ def ingest_direct_transcript_link(
 def _clean_youtube_vtt(vtt_text: str) -> str:
     """Strip headers, timestamp markers, inline cue tags, and dedupe lines.
 
-    YouTube auto-VTT uses progressive caption display — each line appears many
-    times as the caption builds up. Deduping by exact-line, first-occurrence,
-    yields a clean chronological transcript.
+    YouTube auto-VTT uses progressive caption display — each line repeats
+    across CONSECUTIVE cues as the caption builds up. Deduping against the
+    previously-emitted line collapses those build-up artefacts while still
+    preserving content that a speaker genuinely repeats later in the
+    transcript ("yeah", "right", a guest's catchphrase). An earlier version
+    deduped globally via a `seen: set` and silently dropped every second
+    occurrence of any short utterance.
     """
-    seen: set[str] = set()
     out: list[str] = []
+    prev: str | None = None
     for raw in vtt_text.splitlines():
         if raw.startswith(("WEBVTT", "Kind:", "Language:")) or not raw.strip():
             continue
         if "-->" in raw:
             continue
         cleaned = re.sub(r"<[^>]+>", "", raw).strip()
-        if not cleaned or cleaned in seen:
+        if not cleaned or cleaned == prev:
             continue
-        seen.add(cleaned)
+        prev = cleaned
         out.append(cleaned)
     return re.sub(r"\s+", " ", " ".join(out)).strip()
 
@@ -1054,11 +1058,32 @@ def _chunk_into_speaker_turns(
     """Sentence-split + chunk into alternating speaker lines.
 
     The inline-transcript detector in parse_source requires ≥3 speaker turns.
-    Auto-captions carry no speaker info, so we alternate between Host/Guest as
-    a proxy. resolve_speakers downstream can refine attribution from content
-    cues; the bundle just needs *some* turn structure to clear the detector.
+    Auto-captions carry no speaker info, so we alternate between two labels
+    as a proxy. resolve_speakers / resolve_speaker_aliases downstream can
+    refine attribution; the bundle just needs *some* turn structure to clear
+    the detector.
+
+    Falls back to even word-based chunking when sentence-splitting produces
+    too few units to fill `target_turns`. ASR-only YouTube auto-captions
+    routinely arrive WITHOUT any sentence-ending punctuation, which used to
+    collapse the entire transcript to a single "sentence" → 1 turn → the
+    caller's `len(turns) < 3` guard would then raise on every such video.
     """
+    if not transcript.strip():
+        return []
     sentences = [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", transcript) if s.strip()]
+    # Fall back to word-based chunking when there aren't enough sentence
+    # boundaries to even reach the target turn count (the common case for
+    # punctuation-free auto-captions). Anything less than ~6 words total
+    # just stays a single chunk — too thin to alternate meaningfully.
+    if len(sentences) < target_turns:
+        words = transcript.split()
+        if len(words) >= max(6, target_turns):
+            chunk_size = max(1, len(words) // target_turns)
+            sentences = [
+                " ".join(words[i : i + chunk_size])
+                for i in range(0, len(words), chunk_size)
+            ]
     if not sentences:
         return []
     chunk_size = max(1, len(sentences) // max(1, target_turns))
@@ -1095,18 +1120,31 @@ def _format_youtube_chapters(info: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def _resolve_yt_dlp() -> str:
-    """Locate yt-dlp; raise UrlIngestError with a clear install hint if missing."""
+    """Locate yt-dlp; raise UrlIngestError with a clear install hint if missing.
+
+    Falls back to the standard Homebrew install locations on macOS (Apple
+    Silicon `/opt/homebrew/bin`, Intel `/usr/local/bin`), the user-local
+    Homebrew layout (`~/homebrew/bin`), and pipx's per-user bin
+    (`~/.local/bin`) before giving up. Sandboxed / launchd-spawned shells
+    often have a minimal PATH that lacks any of these — the fallback
+    prevents the misleading "not installed" error when yt-dlp is in fact
+    installed in the default location.
+    """
     path = shutil.which("yt-dlp")
     if path:
         return path
-    # Common Homebrew install path on macOS — surface it if yt-dlp isn't on PATH.
-    fallback = Path.home() / "homebrew" / "bin" / "yt-dlp"
-    if fallback.exists():
-        return str(fallback)
+    for candidate in (
+        Path("/opt/homebrew/bin/yt-dlp"),    # Apple Silicon Homebrew default
+        Path("/usr/local/bin/yt-dlp"),       # Intel Homebrew default
+        Path.home() / "homebrew" / "bin" / "yt-dlp",  # user-local Homebrew
+        Path.home() / ".local" / "bin" / "yt-dlp",    # pipx default
+    ):
+        if candidate.exists():
+            return str(candidate)
     raise UrlIngestError(
         "yt-dlp is required for the youtube_captions provider but was not found "
-        "on PATH. Install with `brew install yt-dlp` (Homebrew) or "
-        "`pipx install yt-dlp`, then retry."
+        "on PATH or in any standard install location. Install with "
+        "`brew install yt-dlp` (Homebrew) or `pipx install yt-dlp`, then retry."
     )
 
 
@@ -1176,9 +1214,13 @@ def ingest_youtube_captions(
         )
 
     target_turns = int(provider.get("speaker_alternation_turns") or 60)
-    host = (provider.get("host") or info.get("uploader") or "Host").strip()
-    # Without a known guest name we use "Guest" — resolve_speakers can refine.
-    turns = _chunk_into_speaker_turns(transcript, speakers=(host, "Guest"), target_turns=target_turns)
+    # Anonymous diarization-style labels so resolve_speaker_aliases downstream
+    # can map them to real participant names. Using literal "Host"/"Guest"
+    # labels here would slip past the SPEAKER_NN-only generic-label regex
+    # and ship into the rendered transcript verbatim.
+    turns = _chunk_into_speaker_turns(
+        transcript, speakers=("SPEAKER_00", "SPEAKER_01"), target_turns=target_turns,
+    )
     if len(turns) < 3:
         raise UrlIngestError(
             f"YouTube auto-captions too short to produce ≥3 speaker turns for {url}"
@@ -1194,10 +1236,28 @@ def ingest_youtube_captions(
     page_metadata: dict[str, Any] = {}
     if iso_date:
         page_metadata["date"] = iso_date
-    if info.get("uploader"):
-        page_metadata.setdefault("podcast_title", provider.get("podcast_title") or info["uploader"])
-    if provider.get("host"):
-        page_metadata.setdefault("host", provider["host"])
+    # Podcast title precedence: provider config (rarely set for the catch-all
+    # `youtube` provider) > yt-dlp uploader > yt-dlp channel > literal
+    # "YouTube". The last-resort fallback is intentionally generic but keeps
+    # sidecar.episode.podcast_title non-empty so strict validation passes
+    # even when the info.json schema omits both uploader and channel.
+    podcast_title = (
+        (provider.get("podcast_title") or "").strip()
+        or (info.get("uploader") or "").strip()
+        or (info.get("channel") or "").strip()
+        or "YouTube"
+    )
+    page_metadata["podcast_title"] = podcast_title
+    # Host precedence: provider config > yt-dlp uploader (the YouTube channel
+    # owner is the most likely interviewer when the episode is uploaded from
+    # the host's own channel). Empty is acceptable — resolve_speakers will
+    # try to recover the host from the transcript head.
+    host = (
+        (provider.get("host") or "").strip()
+        or (info.get("uploader") or "").strip()
+    )
+    if host:
+        page_metadata["host"] = host
     if info.get("duration"):
         page_metadata["duration_seconds"] = info["duration"]
 
