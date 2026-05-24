@@ -29,6 +29,7 @@ Preferred input is a supported publisher episode URL. 1.0 supports:
 - 99% Invisible
 - The Tim Ferriss Show
 - Conversations with Tyler
+- Dwarkesh Podcast
 
 Supported providers are declared as one JSON file per host under `podcast-transformer/providers/`. Add a new host by contributing one small manifest file there, then add fixture coverage in `tests/fixtures/url_ingest/`.
 

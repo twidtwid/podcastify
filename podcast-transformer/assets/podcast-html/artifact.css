@@ -180,6 +180,27 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
   color: var(--ink-soft);
 }
 .folder-tab.listen:hover { color: var(--accent); }
+
+/* Inspector show/hide control — far-right of the briefing topbar */
+.inspector-toggle {
+  margin-left: auto;
+  align-self: center;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+  background: var(--paper-tint);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, color 120ms ease;
+}
+.inspector-toggle:hover { background: var(--paper-card); color: var(--ink); }
+.inspector-toggle[aria-pressed="true"] { color: var(--ink); }
+
 .topbar .brand {
   display: flex;
   flex-direction: column;
@@ -365,6 +386,13 @@ main.frame.wide { max-width: var(--measure-wide); }
   gap: 1.25rem;
   align-items: start;
 }
+
+/* Inspector collapsed: drop the third column and let the main column reflow
+   into the freed width. The toggle button persists the preference. */
+.studio.inspector-collapsed {
+  grid-template-columns: 22rem minmax(0, 1fr);
+}
+.studio.inspector-collapsed .col-inspector { display: none; }
 
 .card {
   background: var(--card-bg);
