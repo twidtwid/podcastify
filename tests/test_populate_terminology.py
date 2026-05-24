@@ -101,6 +101,18 @@ class CapTermsTests(unittest.TestCase):
         terms = [_entry(f"t{i}") for i in range(self.mod.MAX_TERMS + 12)]
         self.assertEqual(len(self.mod._cap_terms(terms)), self.mod.MAX_TERMS)
 
+    def test_url_bearing_entries_are_capped_at_limit_too(self) -> None:
+        # When url-bearing entries themselves exceed `limit`, the hard ceiling
+        # still wins — earlier behaviour kept all url-bearing entries even
+        # past the cap, silently breaking the "hard ceiling" promise on
+        # re-runs of an episode whose prior sidecar already had 35+ linked
+        # terms.
+        terms = [_entry(f"t{i}", url=f"https://example.com/{i}") for i in range(50)]
+        capped = self.mod._cap_terms(terms, limit=35)
+        self.assertEqual(len(capped), 35)
+        self.assertEqual([t["term"] for t in capped],
+                         [f"t{i}" for i in range(35)])
+
 
 if __name__ == "__main__":
     unittest.main()

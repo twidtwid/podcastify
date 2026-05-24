@@ -197,20 +197,28 @@ def _parse_terminology(raw: str) -> list[dict]:
 def _cap_terms(terms: list[dict], limit: int = MAX_TERMS) -> list[dict]:
     """Trim an over-long terminology list to `limit`, in original order.
 
-    Entries that already carry a show-notes `url` are publisher-curated and
-    never dropped — only un-linked LLM-enumerated entries are trimmed.
+    Url-bearing entries (publisher show-notes links) are prioritized: every
+    one is kept before any un-linked LLM entry, in original order. But the
+    `limit` is a HARD ceiling even for url-bearing entries — re-running an
+    episode whose prior sidecar already carried 35+ linked entries would
+    otherwise silently bypass the cap and overflow the briefing inspector.
+    When url-bearing entries themselves exceed `limit`, the first `limit`
+    of them are kept and the rest dropped along with all non-linked entries.
     """
     if len(terms) <= limit:
         return terms
-    order = {id(t): pos for pos, t in enumerate(terms)}
-    keep = [t for t in terms if t.get("url")]
-    for t in terms:
-        if len(keep) >= limit:
-            break
-        if not t.get("url"):
-            keep.append(t)
-    keep.sort(key=lambda t: order[id(t)])
-    return keep
+    url_bearing = [t for t in terms if t.get("url")]
+    if len(url_bearing) >= limit:
+        # Even publisher-curated entries get capped past the ceiling.
+        kept_ids = {id(t) for t in url_bearing[:limit]}
+    else:
+        kept_ids = {id(t) for t in url_bearing}
+        for t in terms:
+            if len(kept_ids) >= limit:
+                break
+            if not t.get("url"):
+                kept_ids.add(id(t))
+    return [t for t in terms if id(t) in kept_ids]
 
 
 def fmt_chapters(sidecar: dict) -> str:
