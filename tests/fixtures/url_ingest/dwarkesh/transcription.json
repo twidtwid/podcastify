@@ -1,0 +1,14 @@
+[
+  {
+    "speaker": "SPEAKER_00",
+    "start": 0,
+    "end": 12.5,
+    "text": "Dylan is the CEO of SemiAnalysis. The burning question I have for you is about scaling AI compute."
+  },
+  {
+    "speaker": "SPEAKER_01",
+    "start": 12.5,
+    "end": 30.0,
+    "text": "So when you talk about the CapEx of these hyperscalers, a portion of this is immediately for compute going online this year."
+  }
+]

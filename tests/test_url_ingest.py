@@ -39,6 +39,7 @@ class UrlIngestManifestTests(unittest.TestCase):
                 "tim_blog",
                 "99pi",
                 "conversations_with_tyler",
+                "dwarkesh",
             },
         )
 
@@ -49,6 +50,7 @@ class UrlIngestManifestTests(unittest.TestCase):
             [
                 "99pi.json",
                 "conversations_with_tyler.json",
+                "dwarkesh.json",
                 "foundmyfitness.json",
                 "lenny_substack.json",
                 "new_yorker.json",
@@ -486,6 +488,40 @@ class UrlIngestSubstackProviderTests(unittest.TestCase):
         self.assertEqual(turns[0]["speaker"], "Lenny Rachitsky")
         self.assertEqual(turns[1]["speaker"], "Eric Ries")
         self.assertGreater(turns[1]["word_count"], 0)
+
+    def test_dwarkesh_substack_transcription_json_writes_bundle(self) -> None:
+        # Dwarkesh runs on Substack under the custom domain dwarkesh.com, so it
+        # routes through the shared `substack` ingest kind. Its diarization
+        # ships `speaker_map: null` — the turns keep raw `SPEAKER_NN` labels for
+        # resolve_speakers to map downstream, rather than resolving to names
+        # here the way the Lenny fixture (which has a speaker_map) does.
+        url = "https://www.dwarkesh.com/p/dylan-patel"
+        transcript_url = "https://substackcdn.com/video_upload/post/190839917/abcdef/transcription.json?Expires=9999999999&Signature=test"
+        episode_dir = self.url_ingest.ingest_url(
+            url,
+            self.out_root,
+            fetcher=self.fixture_fetcher(
+                {
+                    url: self.fixtures / "dwarkesh" / "page.html",
+                    transcript_url: self.fixtures / "dwarkesh" / "transcription.json",
+                }
+            ),
+        )
+        transcript = (episode_dir / "source" / "user-provided-transcript.txt").read_text(encoding="utf-8")
+        self.assertIn("SPEAKER_00: Dylan is the CEO of SemiAnalysis.", transcript)
+        self.assertIn("SPEAKER_01: So when you talk about the CapEx", transcript)
+        source = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
+        self.assertIn("Dylan Patel — Deep dive on the 3 big bottlenecks", source)
+        self.assertIn("https://www.youtube.com/watch?v=mDG_Hx3BSUE", source)
+        self.assertIn("Podcast: Dwarkesh Podcast", source)
+        self.assertIn("Host: Dwarkesh Patel", source)
+        provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
+        self.assertEqual(provenance["provider_id"], "dwarkesh")
+        self.assertEqual(provenance["chapters"][0], {"time": "00:00", "title": "Why an H100 is worth more today than 3 years ago"})
+        turns = json.loads((episode_dir / "source" / "transcript.turns.json").read_text(encoding="utf-8"))
+        self.assertEqual(turns[0]["speaker"], "SPEAKER_00")
+        self.assertEqual(turns[1]["speaker"], "SPEAKER_01")
+        self.assertGreater(turns[0]["word_count"], 0)
 
     def test_substack_duration_seconds_from_segment_list(self) -> None:
         # Real transcription.json is a flat list of {start, end, text, ...}
