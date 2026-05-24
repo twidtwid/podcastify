@@ -169,26 +169,37 @@ def strip_tags(text: str) -> str:
     return clean_text(TAG_RE.sub(" ", text))
 
 
-def strip_title_suffix(title: str, provider: dict[str, Any]) -> str:
-    """Drop a publisher-specific SEO suffix from the page's og:title.
+# Separator/whitespace chars left dangling after a prefix/suffix is peeled.
+_TITLE_EDGE_CHARS = " -–—|·:"
+
+
+def strip_title_boilerplate(title: str, provider: dict[str, Any]) -> str:
+    """Drop publisher-specific boilerplate from the page's og:title.
 
     Tim.blog renders og:title as `<episode> - The Blog of Author Tim Ferriss`
-    — a ~32-char suffix that breaks the briefing layout. Providers can
-    declare `title_strip_suffix` (string or list of strings) to peel those
-    off. Substring match at the END of the title, case-insensitive,
-    repeated until no more suffixes apply.
+    — a ~32-char suffix that breaks the briefing layout. The per-episode
+    *transcript* page additionally prepends `The Tim Ferriss Show Transcripts:`.
+    Providers can declare `title_strip_suffix` and/or `title_strip_prefix`
+    (string or list of strings) to peel those off. Substring match at the
+    END (suffix) or START (prefix) of the title, case-insensitive, repeated
+    until nothing more applies.
     """
     suffixes = provider.get("title_strip_suffix") or []
     if isinstance(suffixes, str):
         suffixes = [suffixes]
+    prefixes = provider.get("title_strip_prefix") or []
+    if isinstance(prefixes, str):
+        prefixes = [prefixes]
     changed = True
     while changed:
         changed = False
         for suffix in suffixes:
-            if not suffix:
-                continue
-            if title.lower().endswith(suffix.lower()):
-                title = title[: -len(suffix)].rstrip(" -–—|·:")
+            if suffix and title.lower().endswith(suffix.lower()):
+                title = title[: -len(suffix)].rstrip(_TITLE_EDGE_CHARS)
+                changed = True
+        for prefix in prefixes:
+            if prefix and title.lower().startswith(prefix.lower()):
+                title = title[len(prefix):].lstrip(_TITLE_EDGE_CHARS)
                 changed = True
     return title
 
@@ -490,7 +501,15 @@ def select_transcript_link(
     if not candidates:
         return None
     candidates.sort(key=lambda x: x[0], reverse=True)
-    return candidates[0][1]
+    best_score, best_link = candidates[0]
+    # A negative score means index/category/archive markers outweighed every
+    # per-episode signal — the only "transcript" links on the page point at
+    # lists of many transcripts, not this episode's. This happens when the
+    # episode is fresh and its own transcript is not published yet. Better to
+    # fail loudly here than silently ingest an index page as the interview.
+    if best_score < 0:
+        return None
+    return best_link
 
 
 def metadata_from_page(html_text: str, *, prefer_visible_time_date: bool = False) -> dict[str, str]:
@@ -732,7 +751,7 @@ def ingest_article_with_transcript(
     episode_dir = out_root / temp_slug
     page_path = fetch_once(url, episode_dir, "page.html", fetcher=fetcher)
     page_html = page_path.read_text(encoding="utf-8")
-    title = strip_title_suffix(extract_title(page_html), provider)
+    title = strip_title_boilerplate(extract_title(page_html), provider)
     links = extract_links(page_html, url)
     page_metadata = metadata_from_page(
         page_html,
@@ -894,7 +913,7 @@ def ingest_substack(
     transcript_url = find_substack_transcription_url(page_html, url)
     transcript_path = fetch_once(transcript_url, episode_dir, "transcription.json", fetcher=fetcher)
     transcript_json = json.loads(transcript_path.read_text(encoding="utf-8"))
-    title = strip_title_suffix(extract_title(page_html), provider)
+    title = strip_title_boilerplate(extract_title(page_html), provider)
     links = extract_links(page_html, url)
     speaker_map = extract_substack_speaker_map(page_html)
     transcript_turns = substack_json_to_turns(transcript_json, speaker_map)
@@ -969,7 +988,7 @@ def ingest_direct_transcript_link(
         fetcher=fetcher,
     )
     transcript_body = transcript_path.read_text(encoding="utf-8")
-    title = strip_title_suffix(extract_title(page_html), provider)
+    title = strip_title_boilerplate(extract_title(page_html), provider)
     page_metadata = metadata_from_page(page_html)
     if provider.get("podcast_title"):
         page_metadata.setdefault("podcast_title", provider["podcast_title"])

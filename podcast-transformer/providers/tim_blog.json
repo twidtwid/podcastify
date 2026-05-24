@@ -9,5 +9,10 @@
     " - The Blog of Author Tim Ferriss",
     " — The Blog of Author Tim Ferriss",
     " | The Blog of Author Tim Ferriss"
+  ],
+  "title_strip_prefix": [
+    "The Tim Ferriss Show Transcripts:",
+    "The Tim Ferriss Show Transcripts —",
+    "The Tim Ferriss Show:"
   ]
 }
