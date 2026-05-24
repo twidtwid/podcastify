@@ -319,6 +319,236 @@ class UrlIngestHtmlUtilityTests(unittest.TestCase):
         )
 
 
+class UrlIngestStripTitleBoilerplateTests(unittest.TestCase):
+    """Cover `title_strip_prefix` + suffix peeling.
+
+    Suffix-stripping was previously the only knob; tim.blog per-episode
+    transcript pages prepend `The Tim Ferriss Show Transcripts:` to og:title,
+    which leaked into `episode.short_title` as the entire headline. These
+    cases lock both ends of the trim, the looped-until-stable behaviour, and
+    the case-insensitive match.
+    """
+
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+
+    def test_suffix_is_stripped_with_dangling_separators(self) -> None:
+        provider = {"title_strip_suffix": [" - The Blog of Author Tim Ferriss"]}
+        result = self.url_ingest.strip_title_boilerplate(
+            "Sami Inkinen of Virta Health - The Blog of Author Tim Ferriss",
+            provider,
+        )
+        self.assertEqual(result, "Sami Inkinen of Virta Health")
+
+    def test_prefix_is_stripped_with_dangling_separators(self) -> None:
+        provider = {"title_strip_prefix": ["The Tim Ferriss Show Transcripts:"]}
+        result = self.url_ingest.strip_title_boilerplate(
+            "The Tim Ferriss Show Transcripts: Sami Inkinen of Virta Health",
+            provider,
+        )
+        self.assertEqual(result, "Sami Inkinen of Virta Health")
+
+    def test_prefix_and_suffix_apply_in_same_call(self) -> None:
+        provider = {
+            "title_strip_prefix": ["The Tim Ferriss Show Transcripts:"],
+            "title_strip_suffix": [" — The Blog of Author Tim Ferriss"],
+        }
+        result = self.url_ingest.strip_title_boilerplate(
+            "The Tim Ferriss Show Transcripts: Sami Inkinen of Virta Health"
+            " — The Blog of Author Tim Ferriss",
+            provider,
+        )
+        self.assertEqual(result, "Sami Inkinen of Virta Health")
+
+    def test_matching_is_case_insensitive(self) -> None:
+        provider = {"title_strip_prefix": ["THE TIM FERRISS SHOW:"]}
+        result = self.url_ingest.strip_title_boilerplate(
+            "the tim ferriss show: Episode title", provider)
+        self.assertEqual(result, "Episode title")
+
+    def test_loops_until_stable_when_a_prefix_exposes_another(self) -> None:
+        provider = {"title_strip_prefix": [
+            "The Tim Ferriss Show Transcripts:",
+            "The Tim Ferriss Show:",
+        ]}
+        result = self.url_ingest.strip_title_boilerplate(
+            "The Tim Ferriss Show Transcripts: The Tim Ferriss Show: Real headline",
+            provider,
+        )
+        self.assertEqual(result, "Real headline")
+
+    def test_provider_with_neither_key_returns_title_unchanged(self) -> None:
+        result = self.url_ingest.strip_title_boilerplate(
+            "Just a clean title", {})
+        self.assertEqual(result, "Just a clean title")
+
+    def test_string_value_is_accepted_in_addition_to_list(self) -> None:
+        # title_strip_prefix accepts a single string, not just a list — the
+        # function normalizes both, matching the prior suffix behavior.
+        provider = {"title_strip_prefix": "Episode:"}
+        result = self.url_ingest.strip_title_boilerplate(
+            "Episode: Real headline", provider)
+        self.assertEqual(result, "Real headline")
+
+
+class UrlIngestSelectTranscriptLinkTests(unittest.TestCase):
+    """Cover the negative-score guard in `select_transcript_link`.
+
+    Fresh tim.blog episodes have an interview page but no per-episode
+    transcript page yet. The publisher menu still links "All Transcripts"
+    (an index of every transcript ever) — that link scores `-50` after the
+    index-page penalty and used to win by default. The guard turns "best is
+    negative" into a `None` return so the caller fails loud instead of
+    silently ingesting an index page as the interview.
+    """
+
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+
+    def test_index_only_candidates_return_none(self) -> None:
+        # Every candidate matches "transcript" but each lives under an
+        # index/category/all-transcripts marker, scoring negative.
+        links = [
+            {"url": "https://tim.blog/category/the-tim-ferriss-show-transcripts/",
+             "text": "The Tim Ferriss Show Transcripts"},
+            {"url": "https://tim.blog/2026/05/all-transcripts-from-the-tim-ferriss-show/",
+             "text": "All Transcripts"},
+            {"url": "https://tim.blog/transcripts/",
+             "text": "Browse transcripts"},
+        ]
+        self.assertIsNone(
+            self.url_ingest.select_transcript_link(links, contains="transcript")
+        )
+
+    def test_per_episode_permalink_still_wins(self) -> None:
+        # A dated permalink scores +50; the index page scores -100. Positive
+        # wins, no None returned.
+        links = [
+            {"url": "https://tim.blog/category/the-tim-ferriss-show-transcripts/",
+             "text": "The Tim Ferriss Show Transcripts"},
+            {"url": "https://tim.blog/2026/05/21/sami-inkinen-transcript/",
+             "text": "This episode"},
+        ]
+        chosen = self.url_ingest.select_transcript_link(links, contains="transcript")
+        self.assertIsNotNone(chosen)
+        self.assertIn("sami-inkinen-transcript", chosen["url"])
+
+    def test_no_candidates_return_none(self) -> None:
+        self.assertIsNone(
+            self.url_ingest.select_transcript_link(
+                [{"url": "https://tim.blog/", "text": "Home"}],
+                contains="transcript",
+            )
+        )
+
+
+class UrlIngestYoutubeHelperTests(unittest.TestCase):
+    """Cover the pure helpers behind `ingest_youtube_captions`.
+
+    The full ingest path shells out to `yt-dlp` and depends on YouTube's
+    response shape, but these three normalizers are pure functions on
+    strings / dicts and worth locking down independently.
+    """
+
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+
+    def test_clean_vtt_drops_headers_timestamps_and_cue_tags(self) -> None:
+        vtt = "\n".join([
+            "WEBVTT",
+            "Kind: captions",
+            "Language: en",
+            "",
+            "00:00:00.000 --> 00:00:02.000 align:start position:0%",
+            "Hello",
+            "Hello <00:00:01.234><c>world</c>",
+            "",
+            "00:00:02.000 --> 00:00:04.000 align:start position:0%",
+            "Hello <00:00:01.234><c>world</c>",
+            "How are you",
+        ])
+        cleaned = self.url_ingest._clean_youtube_vtt(vtt)
+        # Headers, timestamps, inline cue tags all gone; chronological
+        # first-occurrence dedupe keeps the line order; whitespace collapsed.
+        self.assertEqual(cleaned, "Hello Hello world How are you")
+
+    def test_clean_vtt_empty_input_returns_empty_string(self) -> None:
+        self.assertEqual(self.url_ingest._clean_youtube_vtt(""), "")
+        self.assertEqual(
+            self.url_ingest._clean_youtube_vtt("WEBVTT\nKind: captions\n"),
+            "",
+        )
+
+    def test_chunk_into_speaker_turns_alternates_strictly(self) -> None:
+        transcript = " ".join(f"Sentence number {n}." for n in range(1, 13))
+        turns = self.url_ingest._chunk_into_speaker_turns(
+            transcript, target_turns=6)
+        # Strict Host/Guest alternation from the first turn onward.
+        for i, turn in enumerate(turns):
+            expected_speaker = "Host" if i % 2 == 0 else "Guest"
+            self.assertTrue(turn.startswith(f"{expected_speaker}: "), turn)
+
+    def test_chunk_into_speaker_turns_preserves_every_word(self) -> None:
+        transcript = ("This is sentence one. Here comes sentence two. "
+                      "And finally sentence three.")
+        turns = self.url_ingest._chunk_into_speaker_turns(transcript, target_turns=3)
+        # Strip speaker prefixes, rejoin: every word from the source survives.
+        bodies = " ".join(t.split(": ", 1)[1] for t in turns)
+        for word in transcript.split():
+            self.assertIn(word, bodies)
+
+    def test_chunk_into_speaker_turns_empty_input_returns_empty_list(self) -> None:
+        self.assertEqual(self.url_ingest._chunk_into_speaker_turns(""), [])
+        # Whitespace-only / non-sentence input also yields nothing.
+        self.assertEqual(self.url_ingest._chunk_into_speaker_turns("   \n  "), [])
+
+    def test_format_youtube_chapters_produces_pipeline_shape(self) -> None:
+        info = {"chapters": [
+            {"start_time": 0, "title": "Intro"},
+            {"start_time": 754, "title": "The compute bottleneck"},
+        ]}
+        self.assertEqual(
+            self.url_ingest._format_youtube_chapters(info),
+            [
+                {"timestamp": "00:00", "title": "Intro"},
+                {"timestamp": "12:34", "title": "The compute bottleneck"},
+            ],
+        )
+
+    def test_format_youtube_chapters_handles_missing_or_blank_title(self) -> None:
+        info = {"chapters": [
+            {"start_time": 60},                  # no title key
+            {"start_time": 120, "title": "   "},  # blank title
+            {"start_time": 180, "title": "Real title"},
+        ]}
+        result = self.url_ingest._format_youtube_chapters(info)
+        self.assertEqual(
+            [c["title"] for c in result],
+            ["Untitled chapter", "Untitled chapter", "Real title"],
+        )
+
+    def test_format_youtube_chapters_skips_unparseable_start_time(self) -> None:
+        info = {"chapters": [
+            {"start_time": "not-a-number", "title": "Bad row"},
+            {"start_time": 30, "title": "Good row"},
+        ]}
+        self.assertEqual(
+            self.url_ingest._format_youtube_chapters(info),
+            [{"timestamp": "00:30", "title": "Good row"}],
+        )
+
+    def test_format_youtube_chapters_missing_or_empty_key_returns_empty(self) -> None:
+        self.assertEqual(self.url_ingest._format_youtube_chapters({}), [])
+        self.assertEqual(
+            self.url_ingest._format_youtube_chapters({"chapters": None}),
+            [],
+        )
+        self.assertEqual(
+            self.url_ingest._format_youtube_chapters({"chapters": []}),
+            [],
+        )
+
+
 class UrlIngestDirectTranscriptProviderTests(unittest.TestCase):
     def setUp(self) -> None:
         self.url_ingest = load_url_ingest()
