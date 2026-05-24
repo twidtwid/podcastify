@@ -32,6 +32,28 @@ const PodcastArtifacts = (() => {
   };
   const fmtShortTs = (ts) => (ts || "").replace(/^00:/, "");
 
+  // The briefing's right-hand inspector column can be collapsed so the
+  // thesis/takeaways/claims column gets the full width. The preference is
+  // sticky per-reader via localStorage; `file://` and private-mode browsers
+  // can throw on access, so every call is guarded.
+  const INSPECTOR_PREF_KEY = "podcastify.inspectorCollapsed";
+
+  function inspectorCollapsed() {
+    try {
+      return window.localStorage.getItem(INSPECTOR_PREF_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setInspectorCollapsed(collapsed) {
+    try {
+      window.localStorage.setItem(INSPECTOR_PREF_KEY, collapsed ? "1" : "0");
+    } catch (e) {
+      /* preference is best-effort — a failed write just won't persist */
+    }
+  }
+
   function topbar(model, mode) {
     const briefingActive = mode === "glance" ? "active" : "";
     const transcriptActive = mode === "transcript" ? "active" : "";
@@ -51,6 +73,11 @@ const PodcastArtifacts = (() => {
             ${showNotes ? `<a class="folder-tab external" href="${esc(showNotes.url)}"${extAttrs(showNotes.url)}>Show notes <span class="ext" aria-hidden="true">↗</span></a>` : ""}
             ${officialTranscript ? `<a class="folder-tab external" href="${esc(officialTranscript.url)}"${extAttrs(officialTranscript.url)}>Official transcript <span class="ext" aria-hidden="true">↗</span></a>` : ""}
           </nav>
+          ${mode === "glance" ? `
+          <button type="button" class="inspector-toggle" data-inspector-toggle
+                  aria-pressed="${inspectorCollapsed() ? "true" : "false"}">
+            ${inspectorCollapsed() ? "Show sidebar" : "Hide sidebar"}
+          </button>` : ""}
         </div>
       </header>`;
   }
@@ -248,7 +275,7 @@ const PodcastArtifacts = (() => {
 
     return `
       ${topbar(model, "glance")}
-      <div class="studio">
+      <div class="studio${inspectorCollapsed() ? " inspector-collapsed" : ""}">
         <aside class="col-episode">
           <section class="card episode-hero">
             <p class="kicker">${esc(ep.podcast_title)}${ep.episode_number ? ` · #${esc(ep.episode_number)}` : ""} · ${esc(durStr)}</p>
@@ -389,6 +416,18 @@ const PodcastArtifacts = (() => {
       if (event.key === "Escape") {
         qsa("details.jump[open]", root).forEach((d) => { d.open = false; });
       }
+    });
+  }
+
+  function wireInspectorToggle(root) {
+    const btn = root.querySelector("[data-inspector-toggle]");
+    const studio = root.querySelector(".studio");
+    if (!btn || !studio) return;
+    btn.addEventListener("click", () => {
+      const collapsed = studio.classList.toggle("inspector-collapsed");
+      btn.setAttribute("aria-pressed", collapsed ? "true" : "false");
+      btn.textContent = collapsed ? "Show sidebar" : "Hide sidebar";
+      setInspectorCollapsed(collapsed);
     });
   }
 
@@ -541,6 +580,7 @@ const PodcastArtifacts = (() => {
       const root = document.getElementById(targetId);
       root.innerHTML = renderGlance(data());
       wireJumpLinks(root);
+      wireInspectorToggle(root);
     },
   };
 })();

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3 - 2026-05-21
+
+- Adds direct URL-ingest support for the Dwarkesh Podcast (dwarkesh.com), which runs on Substack under a custom domain and routes through the shared `substack` provider kind.
+- Adds `resolve_speaker_aliases.py`: maps anonymous `SPEAKER_NN` diarization labels to real participant names when a Substack post ships without a `speaker_map`. A no-op for providers whose transcripts already carry named speakers.
+- Hardens `populate_terminology.py`: caps the entity list at 35, salvages a truncated terminology array instead of hard-failing, and never drops publisher-linked entries when trimming.
+- The briefing's right-hand sidebar can now be collapsed via a topbar toggle; the preference persists per reader.
+
 ## 1.0.2 - 2026-05-14
 
 - Adds direct URL-ingest support for Conversations with Tyler.
