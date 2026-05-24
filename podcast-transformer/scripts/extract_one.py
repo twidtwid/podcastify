@@ -449,6 +449,37 @@ def main(argv: list[str] | None = None) -> int:
         except json.JSONDecodeError:
             pass
 
+    # Resolved identities, single source of truth for both sidecar_init and
+    # the speaker-alias step below. Host precedence: CLI flag > bundle
+    # declaration > LLM resolver. Guests: same order.
+    resolved_host = args.host or parsed.get("host_guess") or speakers.get("host", "")
+    resolved_guests = (
+        args.guest
+        or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
+        or [g for g in speakers.get("guests", []) if g]
+    )
+
+    # ── 3b. resolve_speaker_aliases ──────────────────────────────────
+    # Map anonymous diarization labels (SPEAKER_00, SPEAKER_01, ...) to real
+    # names. A no-op for every provider whose transcript already carries
+    # named speakers — only Substack posts the publisher never named in
+    # their editor (so `speaker_map` is null) land generic labels here.
+    def _resolve_aliases() -> None:
+        cmd = [
+            sys.executable, str(SCRIPTS / "resolve_speaker_aliases.py"),
+            str(episode_dir),
+        ]
+        if resolved_host:
+            cmd += ["--host", resolved_host]
+        for g in resolved_guests:
+            cmd += ["--guest", g]
+        run(cmd)
+
+    step(
+        "resolve_speaker_aliases", "script", episode_dir, _resolve_aliases,
+        note="LLM call (conditional): map SPEAKER_NN diarization labels to names",
+    )
+
     def _init_sidecar() -> None:
         cmd = [
             sys.executable, str(SCRIPTS / "sidecar.py"), "init",
@@ -462,18 +493,10 @@ def main(argv: list[str] | None = None) -> int:
             cmd += ["--podcast-title", parsed["podcast_title"]]
         if canonical_url:
             cmd += ["--episode-url", canonical_url]
-        # Host precedence: CLI flag > bundle declaration (parsed) > LLM resolver.
-        host = args.host or parsed.get("host_guess") or speakers.get("host", "")
-        if host:
-            cmd += ["--host", host]
-        # Guest precedence: same order as host. The bundle rarely declares a
-        # guest; the resolver is normally the source of truth.
-        guests = (
-            args.guest
-            or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
-            or [g for g in speakers.get("guests", []) if g]
-        )
-        for g in guests:
+        # Host / guests resolved once above (CLI flag > bundle > LLM resolver).
+        if resolved_host:
+            cmd += ["--host", resolved_host]
+        for g in resolved_guests:
             cmd += ["--guest", g]
         # Fall back to whatever url_ingest captured (Substack transcription.json
         # ends → duration, page's `<time datetime>` → published_at). Without
