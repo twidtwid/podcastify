@@ -515,6 +515,19 @@ class UrlIngestYoutubeHelperTests(unittest.TestCase):
             ],
         )
 
+    def test_format_youtube_chapters_uses_hhmmss_past_one_hour(self) -> None:
+        # A long-form 2h episode's "1:15:00" chapter would otherwise have
+        # rendered as "75:00" under the old MM:SS-only scheme.
+        info = {"chapters": [
+            {"start_time": 3599, "title": "Just under an hour"},
+            {"start_time": 3600, "title": "Exactly an hour"},
+            {"start_time": 4500, "title": "Mid-second-hour"},
+        ]}
+        self.assertEqual(
+            [c["timestamp"] for c in self.url_ingest._format_youtube_chapters(info)],
+            ["59:59", "01:00:00", "01:15:00"],
+        )
+
     def test_format_youtube_chapters_handles_missing_or_blank_title(self) -> None:
         info = {"chapters": [
             {"start_time": 60},                  # no title key

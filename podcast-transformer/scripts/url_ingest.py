@@ -1079,7 +1079,16 @@ def _format_youtube_chapters(info: dict[str, Any]) -> list[dict[str, str]]:
             seconds = int(c["start_time"])
         except (KeyError, TypeError, ValueError):
             continue
-        timestamp = f"{seconds // 60:02d}:{seconds % 60:02d}"
+        # Format as HH:MM:SS for chapters past the one-hour mark, MM:SS
+        # otherwise. Renders correctly for the long-form podcast uploads
+        # this provider targets (a 2-hour YouTube episode's "1:15:00"
+        # chapter would otherwise have rendered as "75:00").
+        hours, remainder = divmod(seconds, 3600)
+        minutes, secs = divmod(remainder, 60)
+        if hours:
+            timestamp = f"{hours:02d}:{minutes:02d}:{secs:02d}"
+        else:
+            timestamp = f"{minutes:02d}:{secs:02d}"
         title = (c.get("title") or "").strip() or "Untitled chapter"
         formatted.append({"timestamp": timestamp, "title": title})
     return formatted
