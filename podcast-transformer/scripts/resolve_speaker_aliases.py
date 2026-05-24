@@ -242,6 +242,32 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 0
 
+    # Snapshot the pre-alias originals on the first run so a re-run with a
+    # wrong mapping is recoverable. Without this, a re-run with --skip-fetch
+    # would find no SPEAKER_NN labels (they were rewritten) and short-circuit
+    # as a no-op, leaving the bad attribution baked in until a full
+    # re-ingest. On every subsequent run we restore from the snapshot before
+    # re-resolving, so the LLM always sees the original diarization labels.
+    snapshot_dir = ep / "working" / "_pre_alias"
+    snapshot_turns = snapshot_dir / "transcript.turns.json"
+    snapshot_txt = snapshot_dir / "user-provided-transcript.txt"
+    if snapshot_turns.is_file():
+        # Re-run: restore originals before re-resolving.
+        turns_path.write_text(
+            snapshot_turns.read_text(encoding="utf-8"), encoding="utf-8")
+        if snapshot_txt.is_file() and transcript_path.is_file():
+            transcript_path.write_text(
+                snapshot_txt.read_text(encoding="utf-8"), encoding="utf-8")
+        print("resolve_speaker_aliases: restored pre-alias transcript snapshot",
+              file=sys.stderr)
+    else:
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_turns.write_text(
+            turns_path.read_text(encoding="utf-8"), encoding="utf-8")
+        if transcript_path.is_file():
+            snapshot_txt.write_text(
+                transcript_path.read_text(encoding="utf-8"), encoding="utf-8")
+
     try:
         turns = json.loads(turns_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:

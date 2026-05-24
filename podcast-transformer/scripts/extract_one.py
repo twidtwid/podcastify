@@ -451,13 +451,26 @@ def main(argv: list[str] | None = None) -> int:
 
     # Resolved identities, single source of truth for both sidecar_init and
     # the speaker-alias step below. Host precedence: CLI flag > bundle
-    # declaration > LLM resolver. Guests: same order.
-    resolved_host = args.host or parsed.get("host_guess") or speakers.get("host", "")
-    resolved_guests = (
-        args.guest
-        or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
-        or [g for g in speakers.get("guests", []) if g]
+    # declaration > LLM resolver. Guests: same order. Diarization-shape
+    # placeholders that slip through a non-compliant resolve_speakers run
+    # (e.g. `host: "SPEAKER_00"`) are filtered out — passing them through
+    # would pollute the alias-step participant list and degrade the LLM map.
+    _GENERIC_LABEL_RE = re.compile(r"^SPEAKER(?:[ _-]?\d+)?$", re.IGNORECASE)
+
+    def _drop_if_generic(name: str) -> str:
+        return "" if _GENERIC_LABEL_RE.match((name or "").strip()) else name
+
+    resolved_host = _drop_if_generic(
+        args.host or parsed.get("host_guess") or speakers.get("host", "")
     )
+    resolved_guests = [
+        g for g in (
+            args.guest
+            or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
+            or [g for g in speakers.get("guests", []) if g]
+        )
+        if not _GENERIC_LABEL_RE.match((g or "").strip())
+    ]
 
     # ── 3b. resolve_speaker_aliases ──────────────────────────────────
     # Map anonymous diarization labels (SPEAKER_00, SPEAKER_01, ...) to real
