@@ -159,6 +159,8 @@ python3 podcast-transformer/scripts/podcast_build.py export-json podcast-output/
 
 The command writes `final/episode.package.json`, prints its path, and does not render the built-in HTML artifacts.
 
+**Recommended downstream renderer:** [render-as-html](https://github.com/twidtwid/render-as-html) v2.2.0+ ships a `podcast` shape that consumes this JSON directly (it reads `schema_version: "podcast-transformer/package-v1"` to recognise the contract) and produces a briefing + transcript pair with shared topbar chrome, file-folder tabs, light/dark theme toggle, and a term inspector. Treat podcastextract as the content pipeline and render-as-html as the visual layer — that split is the canonical Plan B integration.
+
 For episodes the pipeline can't auto-derive metadata for (non-Substack publishers, missing host/guest in show notes), pass overrides explicitly:
 
 ```bash
