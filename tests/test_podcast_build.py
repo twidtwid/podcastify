@@ -225,5 +225,37 @@ class TemplateHardeningTests(unittest.TestCase):
             self.assertIn("prior output", stderr.getvalue())
 
 
+class JsonExportTests(unittest.TestCase):
+    def _write_minimal_episode(self, ep: Path) -> None:
+        SpeakerVisibilityTests()._write_minimal_sidecar(ep)
+        (ep / "source" / "user-provided-transcript.txt").write_text(
+            "Lenny Rachitsky: Eric, welcome.\n"
+            "Eric Ries: Thanks for having me.\n",
+            encoding="utf-8",
+        )
+
+    def test_export_json_writes_package_and_skips_html_render(self) -> None:
+        import contextlib
+        import io
+
+        podcast_build = load_podcast_build()
+        with tempfile.TemporaryDirectory() as tmp:
+            ep = Path(tmp)
+            self._write_minimal_episode(ep)
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                rc = podcast_build.main(["export-json", str(ep)])
+
+            package_path = ep / "final" / "episode.package.json"
+            self.assertEqual(rc, 0)
+            self.assertEqual(Path(stdout.getvalue().strip()).resolve(), package_path.resolve())
+            self.assertTrue(package_path.is_file())
+            self.assertFalse((ep / "final" / "podcast-at-a-glance.html").exists())
+            self.assertFalse((ep / "final" / "annotated-transcript.html").exists())
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            self.assertEqual(package["schema_version"], "podcast-transformer/package-v1")
+
+
 if __name__ == "__main__":
     unittest.main()

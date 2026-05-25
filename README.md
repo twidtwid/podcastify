@@ -149,6 +149,14 @@ Each completed run should leave these files in `final/`:
 | `metadata.sidecar.json` | Audit trail, chapters, terminology, uncertainty notes |
 | `transcript.verified.md` | Markdown transcript used by validators |
 
+For a JSON-only handoff to another renderer, build just the package:
+
+```bash
+python3 podcast-transformer/scripts/podcast_build.py export-json podcast-output/<slug>
+```
+
+The command writes `final/episode.package.json`, prints its path, and does not render the built-in HTML artifacts.
+
 For episodes the pipeline can't auto-derive metadata for (non-Substack publishers, missing host/guest in show notes), pass overrides explicitly:
 
 ```bash
