@@ -658,13 +658,18 @@ def regenerate_library_index(episode_dir: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build podcast transcript packages and HTML artifacts.")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ["build", "export-json", "render", "all", "validate"]:
+    # `export-json` writes only `episode.package.json` and prints its path
+    # — the JSON-only handoff for an external renderer. HTML artifacts come
+    # from `render` / `all`. A previous revision shipped both `build` and
+    # `export-json` as aliases for the same code path; one canonical name
+    # is plenty.
+    for name in ["export-json", "render", "all", "validate"]:
         p = sub.add_parser(name)
         p.add_argument("episode_dir", type=Path)
     sub.choices["render"].add_argument("--only", choices=["all", "transcript", "glance"], default="all")
     args = parser.parse_args(argv)
     episode_dir = args.episode_dir.resolve()
-    if args.command in {"build", "export-json"}:
+    if args.command == "export-json":
         package = build_package(episode_dir)
         write_json(episode_dir / "final" / "episode.package.json", package)
         print(episode_dir / "final" / "episode.package.json")

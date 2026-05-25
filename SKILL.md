@@ -30,6 +30,8 @@ Preferred input is a supported publisher episode URL. 1.0 supports:
 - The Tim Ferriss Show
 - Conversations with Tyler
 - Dwarkesh Podcast
+- NBIM's "In Good Company" — article page + YouTube auto-captions (`article_youtube_captions`)
+- Generic YouTube fallback — any youtube.com / youtu.be URL routed through yt-dlp auto-captions (`youtube_captions`)
 
 Supported providers are declared as one JSON file per host under `podcast-transformer/providers/`. Add a new host by contributing one small manifest file there, then add fixture coverage in `tests/fixtures/url_ingest/`.
 

@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](#install)
-[![Release: 1.0.3](https://img.shields.io/badge/release-1.0.3-brightgreen.svg)](CHANGELOG.md)
+[![Release: 1.0.4](https://img.shields.io/badge/release-1.0.4-brightgreen.svg)](CHANGELOG.md)
 
 Turn a podcast episode into two self-contained HTML artifacts you can actually keep — a one-page **briefing** that replaces the podcast for a reader who isn't going to listen, and an **annotated transcript** with a sticky chapter rail and in-text search.
 
@@ -120,6 +120,8 @@ Supported 1.0 publisher pages:
 - The Tim Ferriss Show
 - Conversations with Tyler
 - Dwarkesh Podcast
+- NBIM's "In Good Company" — article page + YouTube auto-captions (`article_youtube_captions`)
+- Generic YouTube fallback — any youtube.com / youtu.be URL routed through yt-dlp auto-captions (`youtube_captions`)
 
 Supported providers are declared as one JSON file per host under [`podcast-transformer/providers/`](podcast-transformer/providers/). A new site should usually be one small manifest file plus fixture coverage.
 

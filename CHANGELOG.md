@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.4 - 2026-05-24
+
+- Adds the `youtube_captions` provider — yt-dlp-powered fallback for episodes whose publisher isn't directly supported and for fresh tim.blog episodes before the transcript page is posted. Includes anonymous SPEAKER_NN turns so `resolve_speaker_aliases` can map participants downstream, HH:MM:SS chapter formatting past the one-hour mark, fallbacks across `/opt/homebrew/bin`, `/usr/local/bin`, `~/homebrew/bin`, and `~/.local/bin` when yt-dlp isn't on PATH, and a `_clean_youtube_vtt` that preserves non-adjacent repeated utterances instead of globally deduping.
+- Adds the `article_youtube_captions` provider kind — an article page (canonical URL, title, metadata) routed through YouTube auto-captions for the transcript. First implementation: NBIM's "In Good Company" series.
+- Hardens `url_ingest`: `select_transcript_link` now returns `None` when the best candidate's score is negative (fail-loud for fresh tim.blog episodes), and `title_strip_prefix` is symmetric to the existing `title_strip_suffix` so per-episode transcript pages with prepended boilerplate strip cleanly.
+- Hardens `resolve_speaker_aliases`: pre-alias originals are snapshotted under `working/_pre_alias/` so a re-run with `--skip-fetch` can recover from a wrong first mapping. Generic-shape labels (`SPEAKER_00`, etc.) returned by a non-compliant `resolve_speakers` are filtered out before reaching the alias step.
+- Hardens `populate_terminology`: `_cap_terms` now enforces `MAX_TERMS=35` even when url-bearing entries alone exceed the cap.
+- Adds a one-shot `python3 podcast-transformer/scripts/podcast_build.py export-json <slug>` for JSON-only handoff to an external renderer.
+- Adds `transcript.turns.json` to YouTube-ingested bundles so downstream speaker resolution actually has structured turns to relabel.
+
 ## 1.0.3 - 2026-05-21
 
 - Adds direct URL-ingest support for the Dwarkesh Podcast (dwarkesh.com), which runs on Substack under a custom domain and routes through the shared `substack` provider kind.

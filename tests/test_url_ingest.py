@@ -872,6 +872,65 @@ class UrlIngestArticleYoutubeProviderTests(unittest.TestCase):
         self.assertEqual([turns[0]["speaker"], turns[1]["speaker"]],
                          ["SPEAKER_00", "SPEAKER_01"])
 
+    def test_article_youtube_provider_uses_in_page_watch_link_when_present(self) -> None:
+        # Cover the non-override path: when the article page itself links
+        # to a /watch?v=... URL, select_youtube_episode_link picks it up
+        # and youtube_url_overrides is never consulted. The shipped NBIM
+        # fixture only links to a channel URL (forcing the override), so
+        # without this case the in-page-link branch was untested.
+        url = "https://www.nbim.no/en/news-and-insights/podcast/episode-with-inline-link/"
+        watch_url = "https://www.youtube.com/watch?v=INPAGEXYZ"
+        page_html = (
+            '<!doctype html><html><head>'
+            '<meta property="og:title" content="Episode with inline link">'
+            '</head><body>'
+            f'<a href="{watch_url}">Watch on YouTube</a>'
+            '</body></html>'
+        )
+        page_path = self.out_root / "_page.html"
+        page_path.parent.mkdir(parents=True, exist_ok=True)
+        page_path.write_text(page_html, encoding="utf-8")
+
+        original_resolve = self.url_ingest._resolve_yt_dlp
+        original_run = self.url_ingest.subprocess.run
+
+        def fake_run(cmd, check, capture_output, text):
+            self.assertIn(watch_url, cmd)  # ← in-page watch URL chosen, not an override
+            output_template = Path(cmd[cmd.index("-o") + 1])
+            output_dir = output_template.parent
+            (output_dir / "ep.info.json").write_text(
+                json.dumps({
+                    "id": "INPAGEXYZ",
+                    "title": "Channel-side fallback title",
+                    "uploader": "NBIM",
+                    "upload_date": "20260101",
+                    "duration": 600,
+                }),
+                encoding="utf-8",
+            )
+            (output_dir / "ep.en.vtt").write_text(
+                "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\n"
+                + " ".join(f"word{i}" for i in range(120)) + "\n",
+                encoding="utf-8",
+            )
+
+        self.url_ingest._resolve_yt_dlp = lambda: "/tmp/fake-yt-dlp"
+        self.url_ingest.subprocess.run = fake_run
+        try:
+            episode_dir = self.url_ingest.ingest_url(
+                url,
+                self.out_root,
+                fetcher=self.fixture_fetcher({url: page_path}),
+            )
+        finally:
+            self.url_ingest._resolve_yt_dlp = original_resolve
+            self.url_ingest.subprocess.run = original_run
+
+        source = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
+        self.assertIn(f"Canonical URL: {url}", source)
+        self.assertIn("Title: Episode with inline link", source)
+        self.assertIn(f"Transcript URL: {watch_url}", source)
+
 
 class UrlIngestSubstackProviderTests(unittest.TestCase):
     def setUp(self) -> None:
