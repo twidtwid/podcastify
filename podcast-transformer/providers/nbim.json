@@ -1,0 +1,10 @@
+{
+  "id": "nbim",
+  "domains": ["www.nbim.no", "nbim.no"],
+  "kind": "article_youtube_captions",
+  "podcast_title": "In Good Company",
+  "host": "Nicolai Tangen",
+  "youtube_url_overrides": {
+    "/en/news-and-insights/podcast/2025/sir-chris-hohn-strategic-investing-long-term-value-and-purposeful-philanthropy/": "https://www.youtube.com/watch?v=M01NZc2QlDk"
+  }
+}

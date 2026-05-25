@@ -701,6 +701,28 @@ def extract_embedded_youtube_links(html_text: str) -> list[dict[str, str]]:
     return links
 
 
+def select_youtube_episode_link(links: list[dict[str, str]]) -> dict[str, str] | None:
+    for link in links:
+        url = link.get("url") or ""
+        parsed = urllib.parse.urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if host in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
+            query = urllib.parse.parse_qs(parsed.query)
+            if parsed.path == "/watch" and query.get("v"):
+                return link
+        if host == "youtu.be" and parsed.path.strip("/"):
+            return link
+    return None
+
+
+def youtube_override_for_url(url: str, provider: dict[str, Any]) -> str:
+    overrides = provider.get("youtube_url_overrides") or {}
+    if not isinstance(overrides, dict):
+        return ""
+    parsed = urllib.parse.urlparse(url)
+    return str(overrides.get(url) or overrides.get(parsed.path) or "")
+
+
 def extract_transcript_section(html_text: str) -> str:
     text = html_to_text(html_text)
     lines = text.splitlines()
@@ -1156,6 +1178,9 @@ def ingest_youtube_captions(
     slug: str | None,
     fetcher: Callable[[str], tuple[int, str, bytes]],
     canonical_url_override: str | None = None,
+    input_url_override: str | None = None,
+    title_override: str = "",
+    metadata_overrides: dict[str, Any] | None = None,
 ) -> Path:
     """Build a bundle from a YouTube video's auto-captions + info.json metadata.
 
@@ -1218,24 +1243,32 @@ def ingest_youtube_captions(
     # can map them to real participant names. Using literal "Host"/"Guest"
     # labels here would slip past the SPEAKER_NN-only generic-label regex
     # and ship into the rendered transcript verbatim.
-    turns = _chunk_into_speaker_turns(
+    turn_lines = _chunk_into_speaker_turns(
         transcript, speakers=("SPEAKER_00", "SPEAKER_01"), target_turns=target_turns,
     )
-    if len(turns) < 3:
+    if len(turn_lines) < 3:
         raise UrlIngestError(
             f"YouTube auto-captions too short to produce ≥3 speaker turns for {url}"
         )
+    transcript_turns = []
+    for line in turn_lines:
+        speaker, text = line.split(": ", 1)
+        transcript_turns.append({
+            "speaker": speaker,
+            "text": text,
+            "word_count": _word_count(text),
+        })
 
-    title = (info.get("title") or "").strip()
+    title = title_override.strip() or (info.get("title") or "").strip()
     video_id = info.get("id") or ""
     upload_date = info.get("upload_date") or ""  # YYYYMMDD
     iso_date = ""
     if re.fullmatch(r"\d{8}", upload_date):
         iso_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
 
-    page_metadata: dict[str, Any] = {}
+    page_metadata: dict[str, Any] = dict(metadata_overrides or {})
     if iso_date:
-        page_metadata["date"] = iso_date
+        page_metadata.setdefault("date", iso_date)
     # Podcast title precedence: provider config (rarely set for the catch-all
     # `youtube` provider) > yt-dlp uploader > yt-dlp channel > literal
     # "YouTube". The last-resort fallback is intentionally generic but keeps
@@ -1247,7 +1280,7 @@ def ingest_youtube_captions(
         or (info.get("channel") or "").strip()
         or "YouTube"
     )
-    page_metadata["podcast_title"] = podcast_title
+    page_metadata.setdefault("podcast_title", podcast_title)
     # Host precedence: provider config > yt-dlp uploader (the YouTube channel
     # owner is the most likely interviewer when the episode is uploaded from
     # the host's own channel). Empty is acceptable — resolve_speakers will
@@ -1257,20 +1290,21 @@ def ingest_youtube_captions(
         or (info.get("uploader") or "").strip()
     )
     if host:
-        page_metadata["host"] = host
+        page_metadata.setdefault("host", host)
     if info.get("duration"):
-        page_metadata["duration_seconds"] = info["duration"]
+        page_metadata.setdefault("duration_seconds", info["duration"])
 
     bundle_slug = slug or slugify(title or video_id or provider["id"])
     canonical = canonical_url_override or url
 
     bundle = SourceBundle(
         provider_id=provider["id"],
-        input_url=url,
+        input_url=input_url_override or url,
         canonical_url=canonical,
         slug=bundle_slug,
         title=strip_title_boilerplate(title, provider),
-        transcript_text="\n".join(turns) + "\n",
+        transcript_text="\n".join(turn_lines) + "\n",
+        transcript_turns=transcript_turns,
         transcript_source_url=url,
         metadata=page_metadata,
         chapters=_format_youtube_chapters(info),
@@ -1282,6 +1316,46 @@ def ingest_youtube_captions(
         ],
     )
     return write_bundle(bundle, out_root)
+
+
+def ingest_article_youtube_captions(
+    url: str,
+    provider: dict[str, Any],
+    out_root: Path,
+    *,
+    slug: str | None,
+    fetcher: Callable[[str], tuple[int, str, bytes]],
+) -> Path:
+    temp_slug = slug or slugify(urllib.parse.urlparse(url).path.strip("/") or provider["id"])
+    episode_dir = out_root / temp_slug
+    page_path = fetch_once(url, episode_dir, "page.html", fetcher=fetcher)
+    page_html = page_path.read_text(encoding="utf-8")
+    links = extract_embedded_youtube_links(page_html) + extract_links(page_html, url)
+    youtube_link = select_youtube_episode_link(links)
+    if not youtube_link:
+        override = youtube_override_for_url(url, provider)
+        if override:
+            youtube_link = {"url": override, "text": "YouTube episode"}
+    if not youtube_link:
+        raise UrlIngestError(f"{provider['id']} page fetched, but no YouTube episode link was found")
+
+    page_metadata = metadata_from_page(page_html)
+    if provider.get("podcast_title"):
+        page_metadata.setdefault("podcast_title", provider["podcast_title"])
+    if provider.get("host"):
+        page_metadata.setdefault("host", provider["host"])
+
+    return ingest_youtube_captions(
+        youtube_link["url"],
+        provider,
+        out_root,
+        slug=slug,
+        fetcher=fetcher,
+        canonical_url_override=url,
+        input_url_override=url,
+        title_override=strip_title_boilerplate(extract_title(page_html), provider),
+        metadata_overrides=page_metadata,
+    )
 
 
 def ingest_url(
@@ -1326,6 +1400,14 @@ def ingest_url(
             slug=slug,
             fetcher=fetcher,
         )
+    if kind == "article_youtube_captions":
+        return ingest_article_youtube_captions(
+            url,
+            provider,
+            out_root,
+            slug=slug,
+            fetcher=fetcher,
+        )
     raise UrlIngestError(f"Provider kind not implemented yet: {kind}")
 
 
@@ -1362,7 +1444,8 @@ def format_source_input(bundle: SourceBundle) -> str:
         lines.append("")
         lines.append("Chapters:")
         for chapter in bundle.chapters:
-            lines.append(f"- {chapter.get('time', '')} {chapter.get('title', '')}".rstrip())
+            timestamp = chapter.get("time") or chapter.get("timestamp") or ""
+            lines.append(f"- {timestamp} {chapter.get('title', '')}".rstrip())
     if bundle.warnings:
         lines.append("")
         lines.append("Warnings:")

@@ -34,6 +34,7 @@ class UrlIngestManifestTests(unittest.TestCase):
             ids,
             {
                 "lenny_substack",
+                "nbim",
                 "new_yorker",
                 "foundmyfitness",
                 "tim_blog",
@@ -54,6 +55,7 @@ class UrlIngestManifestTests(unittest.TestCase):
                 "dwarkesh.json",
                 "foundmyfitness.json",
                 "lenny_substack.json",
+                "nbim.json",
                 "new_yorker.json",
                 "tim_blog.json",
                 "youtube.json",
@@ -603,6 +605,71 @@ class UrlIngestYoutubeHelperTests(unittest.TestCase):
             [],
         )
 
+    def test_source_input_serializes_youtube_timestamp_chapters(self) -> None:
+        bundle = self.url_ingest.SourceBundle(
+            provider_id="youtube",
+            input_url="https://youtu.be/abc",
+            canonical_url="https://youtu.be/abc",
+            slug="episode",
+            title="Episode",
+            chapters=[{"timestamp": "01:00:00", "title": "Deep dive"}],
+        )
+        source = self.url_ingest.format_source_input(bundle)
+        self.assertIn("- 01:00:00 Deep dive", source)
+
+    def test_youtube_ingest_writes_structured_turns_for_alias_resolution(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            out_root = tmp_path / "out"
+            fake_yt_dlp = tmp_path / "yt-dlp"
+            fake_yt_dlp.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake_yt_dlp.chmod(0o755)
+
+            original_resolve = self.url_ingest._resolve_yt_dlp
+            original_run = self.url_ingest.subprocess.run
+
+            def fake_run(cmd, check, capture_output, text):
+                output_template = Path(cmd[cmd.index("-o") + 1])
+                output_dir = output_template.parent
+                (output_dir / "ep.info.json").write_text(
+                    json.dumps({
+                        "id": "abc",
+                        "title": "YouTube Episode",
+                        "uploader": "Host Channel",
+                        "upload_date": "20260524",
+                        "duration": 120,
+                    }),
+                    encoding="utf-8",
+                )
+                (output_dir / "ep.en.vtt").write_text(
+                    "WEBVTT\n\n"
+                    "00:00:00.000 --> 00:00:02.000\n"
+                    + " ".join(f"word{i}" for i in range(120))
+                    + "\n",
+                    encoding="utf-8",
+                )
+
+            self.url_ingest._resolve_yt_dlp = lambda: str(fake_yt_dlp)
+            self.url_ingest.subprocess.run = fake_run
+            try:
+                episode_dir = self.url_ingest.ingest_youtube_captions(
+                    "https://youtu.be/abc",
+                    {"id": "youtube", "kind": "youtube_captions", "speaker_alternation_turns": 6},
+                    out_root,
+                    slug=None,
+                    fetcher=lambda url: (200, "text/plain", b""),
+                )
+            finally:
+                self.url_ingest._resolve_yt_dlp = original_resolve
+                self.url_ingest.subprocess.run = original_run
+
+            turns_path = episode_dir / "source" / "transcript.turns.json"
+            self.assertTrue(turns_path.is_file())
+            turns = json.loads(turns_path.read_text(encoding="utf-8"))
+            self.assertGreaterEqual(len(turns), 3)
+            self.assertEqual([turns[0]["speaker"], turns[1]["speaker"]],
+                             ["SPEAKER_00", "SPEAKER_01"])
+
 
 class UrlIngestDirectTranscriptProviderTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -733,6 +800,77 @@ class UrlIngestArticleTranscriptProviderTests(unittest.TestCase):
         provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
         self.assertEqual(provenance["provider_id"], "conversations_with_tyler")
         self.assertEqual(provenance["metadata"]["date"], "2026-04-29")
+
+
+class UrlIngestArticleYoutubeProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.url_ingest = load_url_ingest()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out_root = Path(self.tmp.name) / "out"
+        self.fixtures = REPO_ROOT / "tests" / "fixtures" / "url_ingest"
+
+    def fixture_fetcher(self, mapping: dict[str, Path]):
+        def fetcher(url: str) -> tuple[int, str, bytes]:
+            if url not in mapping:
+                self.fail(f"unexpected fetch URL: {url}")
+            return 200, "text/html; charset=utf-8", mapping[url].read_bytes()
+        return fetcher
+
+    def test_nbim_article_uses_linked_youtube_captions_with_article_canonical(self) -> None:
+        url = (
+            "https://www.nbim.no/en/news-and-insights/podcast/2025/"
+            "sir-chris-hohn-strategic-investing-long-term-value-and-purposeful-philanthropy/"
+        )
+        youtube_url = "https://www.youtube.com/watch?v=M01NZc2QlDk"
+        original_resolve = self.url_ingest._resolve_yt_dlp
+        original_run = self.url_ingest.subprocess.run
+
+        def fake_run(cmd, check, capture_output, text):
+            self.assertIn(youtube_url, cmd)
+            output_template = Path(cmd[cmd.index("-o") + 1])
+            output_dir = output_template.parent
+            (output_dir / "ep.info.json").write_text(
+                json.dumps({
+                    "id": "M01NZc2QlDk",
+                    "title": "Fallback YouTube Title",
+                    "uploader": "Norges Bank Investment Management",
+                    "upload_date": "20251203",
+                    "duration": 1800,
+                    "chapters": [{"start_time": 3600, "title": "Long-term value"}],
+                }),
+                encoding="utf-8",
+            )
+            (output_dir / "ep.en.vtt").write_text(
+                "WEBVTT\n\n"
+                "00:00:00.000 --> 00:00:02.000\n"
+                + " ".join(f"word{i}" for i in range(120))
+                + "\n",
+                encoding="utf-8",
+            )
+
+        self.url_ingest._resolve_yt_dlp = lambda: "/tmp/fake-yt-dlp"
+        self.url_ingest.subprocess.run = fake_run
+        try:
+            episode_dir = self.url_ingest.ingest_url(
+                url,
+                self.out_root,
+                fetcher=self.fixture_fetcher({url: self.fixtures / "nbim" / "page.html"}),
+            )
+        finally:
+            self.url_ingest._resolve_yt_dlp = original_resolve
+            self.url_ingest.subprocess.run = original_run
+
+        source = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
+        self.assertIn(f"Canonical URL: {url}", source)
+        self.assertIn("Title: Sir Chris Hohn: Strategic Investing", source)
+        self.assertIn(f"Transcript URL: {youtube_url}", source)
+        self.assertIn("Podcast: In Good Company", source)
+        self.assertIn("Host: Nicolai Tangen", source)
+        self.assertIn("- 01:00:00 Long-term value", source)
+        turns = json.loads((episode_dir / "source" / "transcript.turns.json").read_text(encoding="utf-8"))
+        self.assertEqual([turns[0]["speaker"], turns[1]["speaker"]],
+                         ["SPEAKER_00", "SPEAKER_01"])
 
 
 class UrlIngestSubstackProviderTests(unittest.TestCase):
