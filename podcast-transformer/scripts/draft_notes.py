@@ -23,7 +23,7 @@ Optional paid API fallback:
 - `ANTHROPIC_API_KEY` in env.
 - Network access; this calls api.anthropic.com.
 
-The API fallback defaults to `claude-opus-4-1-20250805`. Override with
+The API fallback defaults to `claude-haiku-4-5`. Override with
 `--model`.
 
 The system prompt encodes our anti-slop rules from `references/design-principles.md`
@@ -323,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("episode_dir", type=Path, help="podcast-output/<slug>")
     ap.add_argument("--model", default=None,
-                    help="model alias: ollama default 'gemma4:e4b-nvfp4'; API default 'claude-opus-4-1-20250805'")
+                    help="model alias: ollama default 'gemma4:e4b-nvfp4'; API default 'claude-haiku-4-5'")
     ap.add_argument("--max-tokens", type=int, default=8000,
                     help="max tokens (API-mode only; ignored in Ollama mode)")
     ap.add_argument("--num-ctx", type=int, default=DEFAULT_OLLAMA_NUM_CTX,

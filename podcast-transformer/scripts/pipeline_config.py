@@ -49,7 +49,7 @@ ENRICH_NUM_CTX: int = 4096   # ~700-char window per entry — small ctx is plent
 
 
 # ── Paid Anthropic API fallback (only used with --draft-backend api) ──
-DRAFT_API_MODEL: str = "claude-opus-4-1-20250805"
+DRAFT_API_MODEL: str = "claude-haiku-4-5"
 
 
 def print_config() -> None:
