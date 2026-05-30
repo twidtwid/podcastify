@@ -256,6 +256,25 @@ class JsonExportTests(unittest.TestCase):
             package = json.loads(package_path.read_text(encoding="utf-8"))
             self.assertEqual(package["schema_version"], "podcast-transformer/package-v1")
 
+    def test_rendered_artifacts_follow_html_source_document_contract(self) -> None:
+        podcast_build = load_podcast_build()
+        with tempfile.TemporaryDirectory() as tmp:
+            ep = Path(tmp)
+            self._write_minimal_episode(ep)
+            package = podcast_build.build_package(ep)
+
+            podcast_build.render_artifacts(ep, package)
+
+            self.assertEqual(podcast_build.validate_artifacts(ep), 0)
+            for name in ("podcast-at-a-glance.html", "annotated-transcript.html"):
+                html = (ep / "final" / name).read_text(encoding="utf-8")
+                self.assertIn('<link rel="icon" href="data:,">', html)
+                self.assertIn('type="application/json" id="episode-data"', html)
+                self.assertIn('aria-current="page"', html)
+                self.assertNotIn('role="tablist"', html)
+                self.assertNotIn('role="tab"', html)
+                self.assertNotIn("aria-selected", html)
+
 
 if __name__ == "__main__":
     unittest.main()

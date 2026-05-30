@@ -112,6 +112,29 @@ class ExtractOneSafetyTests(unittest.TestCase):
             transcript.write_text("HOST: Hello\nGUEST: Hi\n", encoding="utf-8")
             self.assertTrue(self.extract_one.has_prepared_transcript(Path(tmp)))
 
+    def test_resolve_speakers_can_be_skipped_when_metadata_has_participants(self) -> None:
+        args = argparse.Namespace(host=None, guest=[])
+        parsed = {"host_guess": "Lenny Rachitsky", "guest_guess": "Eric Ries"}
+        self.assertTrue(self.extract_one.can_skip_resolve_speakers(args, parsed))
+        self.assertEqual(
+            self.extract_one.resolved_participants(args, parsed),
+            ("Lenny Rachitsky", ["Eric Ries"]),
+        )
+
+    def test_resolve_speakers_runs_when_guest_is_unknown(self) -> None:
+        args = argparse.Namespace(host=None, guest=[])
+        parsed = {"host_guess": "Lenny Rachitsky", "guest_guess": ""}
+        self.assertFalse(self.extract_one.can_skip_resolve_speakers(args, parsed))
+
+    def test_cli_participants_beat_metadata_and_model_output(self) -> None:
+        args = argparse.Namespace(host="CLI Host", guest=["CLI Guest"])
+        parsed = {"host_guess": "Metadata Host", "guest_guess": "Metadata Guest"}
+        speakers = {"host": "Model Host", "guests": ["Model Guest"]}
+        self.assertEqual(
+            self.extract_one.resolved_participants(args, parsed, speakers),
+            ("CLI Host", ["CLI Guest"]),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

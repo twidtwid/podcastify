@@ -56,6 +56,7 @@ from typing import Optional
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "podcast-transformer" / "scripts"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
+GENERIC_LABEL_RE = re.compile(r"^SPEAKER(?:[ _-]?\d+)?$", re.IGNORECASE)
 
 
 class StepError(RuntimeError):
@@ -119,6 +120,42 @@ def prepare_source_input(args: argparse.Namespace) -> tuple[Path, Path | None]:
 def has_prepared_transcript(episode_dir: Path) -> bool:
     transcript = episode_dir / "source" / "user-provided-transcript.txt"
     return transcript.exists() and transcript.stat().st_size > 0
+
+
+def _drop_if_generic(name: str) -> str:
+    return "" if GENERIC_LABEL_RE.match((name or "").strip()) else (name or "")
+
+
+def resolved_participants(
+    args: argparse.Namespace,
+    parsed: dict,
+    speakers: dict | None = None,
+) -> tuple[str, list[str]]:
+    """Resolve host/guests using the pipeline's precedence rules.
+
+    Precedence is CLI override > url-ingest/parse metadata > resolve_speakers
+    model output. Keeping it in one helper lets preflight skip the model call
+    when the first two sources already know the participants.
+    """
+    speakers = speakers or {}
+    host = _drop_if_generic(
+        args.host or parsed.get("host_guess") or speakers.get("host", "")
+    )
+    guest_values = (
+        args.guest
+        or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
+        or [g for g in speakers.get("guests", []) if g]
+    )
+    guests = [
+        g for g in guest_values
+        if g and not GENERIC_LABEL_RE.match((g or "").strip())
+    ]
+    return host, guests
+
+
+def can_skip_resolve_speakers(args: argparse.Namespace, parsed: dict) -> bool:
+    host, guests = resolved_participants(args, parsed)
+    return bool(host and guests)
 
 
 def run(cmd: list[str], *, episode_dir: Optional[Path] = None,
@@ -430,17 +467,35 @@ def main(argv: list[str] | None = None) -> int:
     # publisher's voice and broke everywhere else. The model is asked to
     # return empty values when uncertain, so a wrong identity never poisons
     # the briefing.
-    step(
-        "resolve_speakers", "script", episode_dir,
-        lambda: run([
-            sys.executable, str(SCRIPTS / "resolve_speakers.py"),
-            str(episode_dir),
-            "--title", title or "",
-            "--podcast-title", parsed.get("podcast_title", "") or "",
-            "--episode-url", canonical_url or "",
-        ]),
-        note="LLM call: identify host + guests from title + opening transcript",
-    )
+    if can_skip_resolve_speakers(args, parsed):
+        def _write_known_speakers() -> None:
+            host, guests = resolved_participants(args, parsed)
+            out = episode_dir / "working" / "_speakers.json"
+            out.write_text(
+                json.dumps({"host": host, "guests": guests}, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            print(
+                f"  resolve_speakers skipped: host={host!r}, guests={guests}",
+                file=sys.stderr,
+            )
+
+        step(
+            "resolve_speakers", "script", episode_dir, _write_known_speakers,
+            note="skip LLM: host + guest supplied by metadata/CLI",
+        )
+    else:
+        step(
+            "resolve_speakers", "script", episode_dir,
+            lambda: run([
+                sys.executable, str(SCRIPTS / "resolve_speakers.py"),
+                str(episode_dir),
+                "--title", title or "",
+                "--podcast-title", parsed.get("podcast_title", "") or "",
+                "--episode-url", canonical_url or "",
+            ]),
+            note="LLM call: identify host + guests from title + opening transcript",
+        )
     speakers_path = episode_dir / "working" / "_speakers.json"
     speakers = {"host": "", "guests": []}
     if speakers_path.is_file():
@@ -455,22 +510,7 @@ def main(argv: list[str] | None = None) -> int:
     # placeholders that slip through a non-compliant resolve_speakers run
     # (e.g. `host: "SPEAKER_00"`) are filtered out — passing them through
     # would pollute the alias-step participant list and degrade the LLM map.
-    _GENERIC_LABEL_RE = re.compile(r"^SPEAKER(?:[ _-]?\d+)?$", re.IGNORECASE)
-
-    def _drop_if_generic(name: str) -> str:
-        return "" if _GENERIC_LABEL_RE.match((name or "").strip()) else name
-
-    resolved_host = _drop_if_generic(
-        args.host or parsed.get("host_guess") or speakers.get("host", "")
-    )
-    resolved_guests = [
-        g for g in (
-            args.guest
-            or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
-            or [g for g in speakers.get("guests", []) if g]
-        )
-        if not _GENERIC_LABEL_RE.match((g or "").strip())
-    ]
+    resolved_host, resolved_guests = resolved_participants(args, parsed, speakers)
 
     # ── 3b. resolve_speaker_aliases ──────────────────────────────────
     # Map anonymous diarization labels (SPEAKER_00, SPEAKER_01, ...) to real

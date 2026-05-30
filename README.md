@@ -161,6 +161,16 @@ The command writes `final/episode.package.json`, prints its path, and does not r
 
 **Recommended downstream renderer:** [render-as-html](https://github.com/twidtwid/render-as-html) v2.2.0+ ships a `podcast` shape that consumes this JSON directly (it reads `schema_version: "podcast-transformer/package-v1"` to recognise the contract) and produces a briefing + transcript pair with shared topbar chrome, file-folder tabs, light/dark theme toggle, and a term inspector. Treat podcastextract as the content pipeline and render-as-html as the visual layer — that split is the canonical Plan B integration.
 
+### Optimization harness
+
+For a repeatable performance and contract check that does not call Ollama:
+
+```bash
+uv run python podcast-transformer/scripts/perf_harness.py --check
+```
+
+The harness builds a synthetic Lenny/Eric Ries-sized package from public episode metadata, verifies that host/guest metadata skips the speaker-resolution LLM preflight, renders both HTML artifacts, and checks required primitives plus HTML source-document invariants.
+
 For episodes the pipeline can't auto-derive metadata for (non-Substack publishers, missing host/guest in show notes), pass overrides explicitly:
 
 ```bash

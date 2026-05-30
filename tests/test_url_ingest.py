@@ -171,6 +171,22 @@ class UrlIngestHtmlUtilityTests(unittest.TestCase):
         """
         self.assertEqual(self.url_ingest.extract_title(html_text), "Open Graph Episode")
 
+    def test_extract_guest_from_title_accepts_structured_suffix(self) -> None:
+        self.assertEqual(
+            self.url_ingest.extract_guest_from_title(
+                "How to build a company that withstands any era | Eric Ries, Lean Startup author"
+            ),
+            "Eric Ries",
+        )
+
+    def test_extract_guest_from_title_rejects_non_name_suffix(self) -> None:
+        self.assertEqual(
+            self.url_ingest.extract_guest_from_title(
+                "The governance problem | Lean Startup author"
+            ),
+            "",
+        )
+
     def test_extract_links_resolves_relative_urls_and_keeps_text(self) -> None:
         html_text = '<a href="/transcript">Download a Transcript</a><a href="https://youtu.be/abc">Watch</a>'
         links = self.url_ingest.extract_links(html_text, "https://example.com/episode")
@@ -965,6 +981,7 @@ class UrlIngestSubstackProviderTests(unittest.TestCase):
         self.assertIn("Eric Ries: Thanks for having me.", transcript)
         source = (episode_dir / "source" / "_source_input.txt").read_text(encoding="utf-8")
         self.assertIn("https://www.youtube.com/watch?v=PoJ1vTdHpks", source)
+        self.assertIn("Guest: Eric Ries", source)
         provenance = json.loads((episode_dir / "working" / "_url_ingest.json").read_text(encoding="utf-8"))
         self.assertEqual(provenance["provider_id"], "lenny_substack")
         self.assertEqual(provenance["chapters"][1], {"time": "06:45", "title": "Long-term company building"})
