@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from og_card import generate_og_card
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = SKILL_ROOT / "assets" / "podcast-html"
@@ -515,6 +514,7 @@ def render_artifacts(episode_dir: Path, package: dict[str, Any], only: str = "al
     write_verified_transcript(package, final_dir)
     slug = episode_dir.name
     try:
+        from og_card import generate_og_card
         generate_og_card(package, final_dir / "og-card.png", public_base())
     except Exception as exc:  # card is best-effort; never fail the build on it
         print(f"WARN: og-card render skipped ({exc})", file=sys.stderr)
@@ -556,6 +556,35 @@ BANNED_RENDER_PATTERNS = (
     "Speaker share",
     "Built for",  # the BUILT FOR card was removed; field stays in notes.json but should not render
 )
+
+EXTERNAL_RESOURCE_RES = (
+    re.compile(r"<script[^>]+src=['\"]https?:", re.I),
+    re.compile(r"<link[^>]+href=['\"]https?:", re.I),
+    re.compile(r"<img[^>]+src=['\"]https?:", re.I),
+    re.compile(r"<source[^>]+src=['\"]https?:", re.I),
+    re.compile(r"@import\s+['\"]?https?:", re.I),
+    re.compile(r"url\(\s*['\"]?https?:", re.I),
+    re.compile(r"fetch\(\s*['\"]https?:", re.I),
+)
+
+REQUIRED_HTML_PRIMITIVES = {
+    "podcast-at-a-glance.html": (
+        "PodcastArtifacts.renderGlanceDashboard",
+        "folder-tabs",
+        "inspector-toggle",
+        "takeaway-tile",
+        "claim-card",
+        "entity-list",
+    ),
+    "annotated-transcript.html": (
+        "PodcastArtifacts.renderTranscriptBrowser",
+        "folder-tabs",
+        'type="search"',
+        "chapter-nav-item",
+        "data-copy-anchor",
+        'document.createElement("mark")',
+    ),
+}
 
 
 def validate_artifacts(episode_dir: Path) -> int:
@@ -601,6 +630,22 @@ def validate_artifacts(episode_dir: Path) -> int:
         # Skip the embedded <script type="application/json"> payload so that
         # banned strings appearing in the data don't trip the visual check.
         visible = _strip_embedded_payload(text)
+        if not re.search(r'<link\b[^>]*\brel=["\']icon["\'][^>]*\bhref=["\']data:,["\']', text, re.I):
+            failures.append(f"{html_name} missing blank data favicon")
+        if not re.search(r'<script\s+type=["\']application/json["\']\s+id=["\']episode-data["\']>', text, re.I):
+            failures.append(f"{html_name} missing embedded episode-data JSON island")
+        for rx in EXTERNAL_RESOURCE_RES:
+            match = rx.search(text)
+            if match:
+                failures.append(f"{html_name} contains external resource reference: {match.group(0)[:80]}")
+                break
+        if re.search(r'\brole=["\']tab(?:list)?["\']|\baria-selected=', text, re.I):
+            failures.append(f"{html_name} uses ARIA tab roles for folder navigation")
+        if 'aria-current="page"' not in text:
+            failures.append(f"{html_name} folder tabs missing aria-current on active page")
+        for primitive in REQUIRED_HTML_PRIMITIVES.get(html_name, ()):
+            if primitive not in text:
+                failures.append(f"{html_name} missing required primitive marker: {primitive}")
         for banned in BANNED_RENDER_PATTERNS:
             if banned in visible:
                 failures.append(f"banned slop pattern found in {html_name}: {banned!r}")

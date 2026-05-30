@@ -66,9 +66,9 @@ const PodcastArtifacts = (() => {
             <strong>${esc(model.episode.short_title || model.episode.title)}</strong>
             <span>${esc(model.episode.podcast_title)}${model.episode.episode_number ? ` · #${esc(model.episode.episode_number)}` : ""}</span>
           </div>
-          <nav class="folder-tabs" role="tablist" aria-label="Episode views">
-            <a class="folder-tab ${briefingActive}" href="podcast-at-a-glance.html" role="tab" aria-selected="${mode === "glance"}">Briefing</a>
-            <a class="folder-tab ${transcriptActive}" href="annotated-transcript.html" role="tab" aria-selected="${mode === "transcript"}">Transcript</a>
+          <nav class="folder-tabs" aria-label="Episode views">
+            <a class="folder-tab ${briefingActive}" href="podcast-at-a-glance.html"${mode === "glance" ? ' aria-current="page"' : ""}>Briefing</a>
+            <a class="folder-tab ${transcriptActive}" href="annotated-transcript.html"${mode === "transcript" ? ' aria-current="page"' : ""}>Transcript</a>
             ${model.episode.episode_url ? `<a class="folder-tab external listen" href="${esc(model.episode.episode_url)}"${extAttrs(model.episode.episode_url)}>Listen <span class="ext" aria-hidden="true">↗</span></a>` : ""}
             ${showNotes ? `<a class="folder-tab external" href="${esc(showNotes.url)}"${extAttrs(showNotes.url)}>Show notes <span class="ext" aria-hidden="true">↗</span></a>` : ""}
             ${officialTranscript ? `<a class="folder-tab external" href="${esc(officialTranscript.url)}"${extAttrs(officialTranscript.url)}>Official transcript <span class="ext" aria-hidden="true">↗</span></a>` : ""}

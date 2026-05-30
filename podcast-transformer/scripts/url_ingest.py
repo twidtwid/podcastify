@@ -228,6 +228,37 @@ def extract_title(html_text: str) -> str:
     return strip_tags(title.group(1)) if title else ""
 
 
+_PERSON_NAME_RE = re.compile(
+    r"^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3}$"
+)
+
+
+def extract_guest_from_title(title: str) -> str:
+    """Extract a structured headline guest from publisher title metadata.
+
+    This is deliberately narrow. It only accepts a full-name-looking suffix
+    after common title separators, e.g. Lenny's
+    "How to build ... | Eric Ries, Lean Startup author". It does not mine
+    prose and it returns empty on ambiguous headlines.
+    """
+    title = clean_text(title)
+    if not title:
+        return ""
+    suffixes: list[str] = []
+    for sep in (" | ", " — ", " – "):
+        if sep in title:
+            suffixes.append(title.split(sep, 1)[1])
+    with_match = re.search(r"\bwith\s+([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3})\b", title)
+    if with_match:
+        suffixes.append(with_match.group(1))
+    for suffix in suffixes:
+        candidate = re.split(r"[,|—–-]", suffix, 1)[0]
+        candidate = re.sub(r"\([^)]*\)", "", candidate).strip()
+        if _PERSON_NAME_RE.fullmatch(candidate):
+            return candidate
+    return ""
+
+
 def extract_links(html_text: str, base_url: str) -> list[dict[str, str]]:
     links: list[dict[str, str]] = []
     for href, body in HREF_RE.findall(html_text):
@@ -786,6 +817,9 @@ def ingest_article_with_transcript(
         page_metadata.setdefault("podcast_title", provider["podcast_title"])
     if provider.get("host"):
         page_metadata.setdefault("host", provider["host"])
+    guest = extract_guest_from_title(title)
+    if guest:
+        page_metadata.setdefault("guest", guest)
     bundle = SourceBundle(
         provider_id=provider["id"],
         input_url=url,
@@ -954,6 +988,9 @@ def ingest_substack(
         page_metadata.setdefault("podcast_title", provider["podcast_title"])
     if provider.get("host"):
         page_metadata.setdefault("host", provider["host"])
+    guest = extract_guest_from_title(title)
+    if guest:
+        page_metadata.setdefault("guest", guest)
     bundle = SourceBundle(
         provider_id=provider["id"],
         input_url=url,
@@ -1019,6 +1056,9 @@ def ingest_direct_transcript_link(
         page_metadata.setdefault("podcast_title", provider["podcast_title"])
     if provider.get("host"):
         page_metadata.setdefault("host", provider["host"])
+    guest = extract_guest_from_title(title)
+    if guest:
+        page_metadata.setdefault("guest", guest)
     bundle = SourceBundle(
         provider_id=provider["id"],
         input_url=url,
@@ -1344,6 +1384,9 @@ def ingest_article_youtube_captions(
         page_metadata.setdefault("podcast_title", provider["podcast_title"])
     if provider.get("host"):
         page_metadata.setdefault("host", provider["host"])
+    guest = extract_guest_from_title(strip_title_boilerplate(extract_title(page_html), provider))
+    if guest:
+        page_metadata.setdefault("guest", guest)
 
     return ingest_youtube_captions(
         youtube_link["url"],
