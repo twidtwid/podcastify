@@ -87,6 +87,53 @@ def clean_url(u: str) -> str:
     return u
 
 
+# Ad-read sponsor triggers. Podcasts read a paid sponsor spot ("this episode is
+# brought to you by Mercury"); the publisher then lists the sponsor's link in the
+# show notes. Those brands are advertisements, not episode entities — detect them
+# from the transcript so they can be dropped from the inspector link candidates
+# (otherwise the terminology step force-includes every show-notes link).
+SPONSOR_TRIGGER_RE = re.compile(
+    r"(?:brought to you by|sponsored by|thanks to (?:our )?sponsor[s]?,?|"
+    r"this episode is supported by|our sponsor[,:]?|presenting sponsor[,:]?|"
+    r"with support from)\s+(?:the\s+)?([A-Za-z0-9][\w.&'-]*(?:\s+[A-Za-z0-9][\w.&'-]*)?)",
+    re.IGNORECASE,
+)
+
+
+def detect_sponsors(transcript: str) -> set[str]:
+    """Lowercased sponsor brand tokens found in ad-read phrases in the transcript.
+    Returns both the first word and the first-two-word form so a link labelled
+    'Mercury' or domain 'mercury.com' can be matched."""
+    out: set[str] = set()
+    for m in SPONSOR_TRIGGER_RE.finditer(transcript or ""):
+        words: list[str] = []
+        for tok in m.group(1).split():
+            cleaned = tok.strip(".,;:!?'\"()").lower()
+            if not cleaned:
+                break
+            words.append(cleaned)
+            # A trailing sentence/clause punctuation ends the brand name
+            # ("...by Mercury. As an AI founder..." -> just "mercury").
+            if tok[-1] in ".,;:!?":
+                break
+        if words:
+            out.add(words[0])
+            if len(words) >= 2:
+                out.add(" ".join(words[:2]))
+    return out
+
+
+def _is_sponsor_link(label: str, url: str, sponsors: set[str]) -> bool:
+    if not sponsors:
+        return False
+    lab = label.strip().lower()
+    if lab and (lab in sponsors or lab.split()[0] in sponsors):
+        return True
+    m = re.search(r"https?://(?:www\.)?([^/.]+)", url)
+    domain_root = m.group(1).lower() if m else ""
+    return bool(domain_root and domain_root in sponsors)
+
+
 def is_useful(url: str) -> bool:
     if not url.startswith(("http://", "https://")):
         return False
@@ -109,9 +156,10 @@ def is_entity_label(label: str) -> bool:
     return True
 
 
-def extract(text: str) -> list[dict]:
+def extract(text: str, sponsors: set[str] | None = None) -> list[dict]:
     pairs: list[dict] = []
     seen: set[tuple[str, str]] = set()
+    sponsors = sponsors or set()
 
     def _consider(label: str, raw_url: str) -> None:
         if is_truncated_url(raw_url):
@@ -124,6 +172,8 @@ def extract(text: str) -> list[dict]:
             url = clean_url(raw_url)
         if not (is_useful(url) and is_entity_label(label)):
             return
+        if _is_sponsor_link(label, url, sponsors):
+            return  # paid ad-read brand, not an episode entity
         if (label, url) not in seen:
             seen.add((label, url))
             pairs.append({"label": label, "url": url})
@@ -167,11 +217,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: no source file found in {ep}", file=sys.stderr)
         return 2
 
-    pairs = extract(src.read_text(encoding="utf-8"))
+    # Detect ad-read sponsors from the transcript so their show-notes links are
+    # dropped before the terminology step force-includes every link candidate.
+    sponsors: set[str] = set()
+    for tpath in (ep / "source" / "user-provided-transcript.txt",
+                  ep / "final" / "transcript.verified.md",
+                  ep / "source" / "transcript.verified.md"):
+        if tpath.is_file():
+            sponsors = detect_sponsors(tpath.read_text(encoding="utf-8"))
+            break
+
+    pairs = extract(src.read_text(encoding="utf-8"), sponsors)
     out = args.out or ep / "working" / "_entity_links.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(pairs, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"extracted {len(pairs)} entity links from {src.name} -> {out}")
+    sp = f" (dropped sponsors: {', '.join(sorted(sponsors))})" if sponsors else ""
+    print(f"extracted {len(pairs)} entity links from {src.name} -> {out}{sp}")
     return 0
 
 

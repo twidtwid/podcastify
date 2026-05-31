@@ -323,8 +323,11 @@ def run_once() -> dict[str, Any]:
 
 def regressions(report: dict[str, Any]) -> list[str]:
     out: list[str] = []
-    if not report["preflight"]["resolve_speakers_skipped"]:
-        out.append("preflight: Lenny fixture should skip resolve_speakers when host+guest metadata is present")
+    # A publisher byline must NOT skip the transcript model — that was the bug that
+    # mislabeled network sub-show hosts (How I AI billed to Lenny). The fast path is
+    # reserved for a full --host/--guest CLI override.
+    if report["preflight"]["resolve_speakers_skipped"]:
+        out.append("preflight: byline metadata must not skip resolve_speakers (only a full CLI override may)")
     if report["timings"]["deterministic_total_seconds"] > RENDER_CEILING_SECONDS:
         out.append(
             f"deterministic render path {report['timings']['deterministic_total_seconds']}s "

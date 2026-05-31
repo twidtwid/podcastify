@@ -112,19 +112,38 @@ class ExtractOneSafetyTests(unittest.TestCase):
             transcript.write_text("HOST: Hello\nGUEST: Hi\n", encoding="utf-8")
             self.assertTrue(self.extract_one.has_prepared_transcript(Path(tmp)))
 
-    def test_resolve_speakers_can_be_skipped_when_metadata_has_participants(self) -> None:
-        args = argparse.Namespace(host=None, guest=[])
+    def test_publisher_byline_does_not_skip_resolve_speakers(self) -> None:
+        # A publisher byline (host_guess/guest_guess) is a FALLBACK, never a reason
+        # to skip the transcript model. On networks the byline names the publication
+        # owner, not the episode host (e.g. Lenny's Newsletter hosting "How I AI"),
+        # so the transcript must always get a chance to correct it.
+        args = argparse.Namespace(host=None, guest=["Eric Ries"])  # guest via CLI but no host
         parsed = {"host_guess": "Lenny Rachitsky", "guest_guess": "Eric Ries"}
-        self.assertTrue(self.extract_one.can_skip_resolve_speakers(args, parsed))
+        self.assertFalse(self.extract_one.can_skip_resolve_speakers(args, parsed))
+        # With no model output yet, the byline is the fallback.
         self.assertEqual(
             self.extract_one.resolved_participants(args, parsed),
             ("Lenny Rachitsky", ["Eric Ries"]),
         )
 
-    def test_resolve_speakers_runs_when_guest_is_unknown(self) -> None:
+    def test_transcript_model_overrides_publisher_byline(self) -> None:
+        # The core fix: resolve_speakers (transcript) beats the parse byline. This
+        # is the How I AI case — byline says the network owner, transcript says the
+        # actual host.
         args = argparse.Namespace(host=None, guest=[])
         parsed = {"host_guess": "Lenny Rachitsky", "guest_guess": ""}
-        self.assertFalse(self.extract_one.can_skip_resolve_speakers(args, parsed))
+        speakers = {"host": "Claire Vo", "guests": []}
+        self.assertEqual(
+            self.extract_one.resolved_participants(args, parsed, speakers),
+            ("Claire Vo", []),
+        )
+
+    def test_resolve_speakers_only_skipped_on_full_cli_override(self) -> None:
+        # Only an explicit --host plus --guest lets us skip the model.
+        full = argparse.Namespace(host="CLI Host", guest=["CLI Guest"])
+        self.assertTrue(self.extract_one.can_skip_resolve_speakers(full, {}))
+        host_only = argparse.Namespace(host="CLI Host", guest=[])
+        self.assertFalse(self.extract_one.can_skip_resolve_speakers(host_only, {}))
 
     def test_cli_participants_beat_metadata_and_model_output(self) -> None:
         args = argparse.Namespace(host="CLI Host", guest=["CLI Guest"])

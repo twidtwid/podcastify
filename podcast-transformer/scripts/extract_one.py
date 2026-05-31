@@ -133,18 +133,21 @@ def resolved_participants(
 ) -> tuple[str, list[str]]:
     """Resolve host/guests using the pipeline's precedence rules.
 
-    Precedence is CLI override > url-ingest/parse metadata > resolve_speakers
-    model output. Keeping it in one helper lets preflight skip the model call
-    when the first two sources already know the participants.
+    Precedence is CLI override > resolve_speakers (transcript) > parse byline.
+    The transcript is ground truth for who actually speaks: the host opens with
+    "I'm <Name>, welcome to <show>". The publisher byline is only a fallback —
+    on networks (e.g. Lenny's Newsletter hosting "How I AI") the byline names the
+    *publication owner*, not the episode host, so trusting it over the transcript
+    mislabels the host. CLI flags still win for explicit manual override.
     """
     speakers = speakers or {}
     host = _drop_if_generic(
-        args.host or parsed.get("host_guess") or speakers.get("host", "")
+        args.host or speakers.get("host", "") or parsed.get("host_guess", "")
     )
     guest_values = (
         args.guest
-        or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
         or [g for g in speakers.get("guests", []) if g]
+        or ([parsed["guest_guess"]] if parsed.get("guest_guess") else [])
     )
     guests = [
         g for g in guest_values
@@ -154,8 +157,11 @@ def resolved_participants(
 
 
 def can_skip_resolve_speakers(args: argparse.Namespace, parsed: dict) -> bool:
-    host, guests = resolved_participants(args, parsed)
-    return bool(host and guests)
+    # Only a full manual CLI override (--host plus at least one --guest) lets us
+    # skip the transcript model. The parse byline is a fallback, never a reason to
+    # skip — otherwise a network byline (publication owner) would pre-empt the
+    # transcript and the model would never get to correct it.
+    return bool(args.host and args.guest)
 
 
 def run(cmd: list[str], *, episode_dir: Optional[Path] = None,

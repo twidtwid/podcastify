@@ -29,7 +29,10 @@ class PodcastPerfHarnessTests(unittest.TestCase):
         harness = load_perf_harness()
         report = harness.run_once()
 
-        self.assertTrue(report["preflight"]["resolve_speakers_skipped"])
+        # Byline metadata no longer skips the transcript model — that skip was the
+        # bug that mislabeled network sub-show hosts. The byline still supplies the
+        # fallback host/guest when the model hasn't run.
+        self.assertFalse(report["preflight"]["resolve_speakers_skipped"])
         self.assertEqual(report["preflight"]["host"], "Lenny Rachitsky")
         self.assertEqual(report["preflight"]["guests"], ["Eric Ries"])
         self.assertGreaterEqual(report["fixture"]["turns"], 200)

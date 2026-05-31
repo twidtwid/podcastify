@@ -165,6 +165,14 @@ USER_TEMPLATE = """# Episode metadata
 **Published:** {published_at}
 **Duration:** {duration_min} minutes
 
+# Speaker attribution (READ FIRST — overrides any "the guest" phrasing in the system prompt exemplars)
+
+{speaker_guidance}
+
+# Exclude advertising / sponsor reads
+
+Podcasts contain paid sponsor reads ("this episode is brought to you by …", "sponsored by …", "use promo code …", "thanks to our sponsor …"). These are ADVERTISEMENTS, not episode content. Do NOT build any takeaway, claim, evidence, or keyword from a sponsor read, and do NOT treat an advertised brand as a subject the speaker endorses or uses — unless that product is genuinely discussed on the merits in the body of the episode. When in doubt, leave the sponsor out.
+
 # Chapter outline
 
 {chapters}
@@ -180,6 +188,40 @@ Output the JSON now."""
 
 def load_sidecar(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_speaker_guidance(ep_meta: dict) -> str:
+    """Tell the model exactly who is speaking so it attributes by name instead of
+    parroting the generic 'the guest' from the system-prompt exemplars. Handles
+    solo episodes (no guest), interviews, and the unknown case."""
+    hosts = [h for h in (ep_meta.get("hosts") or []) if h]
+    guests = [g for g in (ep_meta.get("guests") or []) if g]
+    host_str = ", ".join(hosts)
+    if hosts and not guests:
+        return (
+            f"This is a SOLO episode. The only speaker is the host, **{host_str}**. "
+            f"Attribute every takeaway, claim, quote, and piece of evidence to "
+            f"{host_str} by name (or 'the host'). There is NO guest — NEVER write "
+            f"'the guest'. The first-person 'I' in the transcript is {host_str}."
+        )
+    if hosts and guests:
+        guest_str = ", ".join(guests)
+        return (
+            f"Host: **{host_str}**. Guest(s): **{guest_str}**. The substantive "
+            f"argument comes from {guest_str}. Attribute positions to people by "
+            f"name; 'the guest' may stand in for {guest_str}, but prefer the name. "
+            f"Do not attribute the guest's claims to the host or vice versa."
+        )
+    if guests:
+        return (
+            f"Guest(s): **{', '.join(guests)}**. Attribute the substance to them by "
+            f"name. Do not invent a host who was not identified."
+        )
+    return (
+        "The host/guest were not identified. Attribute to 'the speaker' or 'the "
+        "host' generically; do NOT invent a named guest, and do not assume an "
+        "interview format — the episode may be a solo monologue."
+    )
 
 
 def fmt_chapters(sidecar: dict) -> str:
@@ -356,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
         podcast_title=ep_meta.get("podcast_title", ""),
         host=", ".join(ep_meta.get("hosts") or []) or "(unknown)",
         guest=", ".join(ep_meta.get("guests") or []) or "(unknown)",
+        speaker_guidance=build_speaker_guidance(ep_meta),
         published_at=ep_meta.get("published_at", ""),
         duration_min=round((ep_meta.get("duration_seconds") or 0) / 60),
         chapters=fmt_chapters(sc),

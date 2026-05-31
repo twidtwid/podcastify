@@ -353,7 +353,10 @@ def build_package(episode_dir: Path) -> dict[str, Any]:
     package = {
         "schema_version": "podcast-transformer/package-v1",
         "generated_at": utc_now(),
-        "episode_dir": str(episode_dir.resolve()),
+        # Slug only, never the absolute path — this value is embedded verbatim in
+        # the package JSON and both HTML pages, so an absolute /Users/... path here
+        # leaks the home directory + install layout the moment a page is published.
+        "episode_dir": episode_dir.name,
         "episode": {
             "title": episode.get("title") or "",
             "short_title": notes.get("short_title") or episode.get("title") or "",

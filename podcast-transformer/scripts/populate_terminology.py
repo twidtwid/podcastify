@@ -79,6 +79,8 @@ The briefing's right-column "inspector" shows every entry as a clickable chip wi
 
 # Hard rules
 
+- **Always profile the host(s) and headline guest(s).** Emit a `person` entry for every name listed under Host/Guest in the Episode metadata, even when near the ceiling — that entry's note is the bio shown in the briefing's "About the host / About the guest" card. Make the note a real 12–25 word bio: who they are, their role, and what they build or are known for. A host with no person entry leaves the card blank.
+- **Exclude advertising sponsors.** A brand that appears ONLY in a paid ad-read — "this episode is brought to you by X", "sponsored by X", "use promo code", "thanks to our sponsor" — is an advertisement, NOT an episode entity. Do not list it. Include a brand only if it is genuinely discussed on the merits in the body of the episode (a sponsor the speaker also demos on its technical merits can stay, described by that real use — never as "used by the speaker" inferred from the ad).
 - **Use the guest's actual phrasing** for concept names. If the guest said "financial gravity", the term is "financial gravity" (not "Financial Gravity" or "the financial-gravity principle").
 - **No URLs** — those are merged in by a downstream script from the publisher's show notes. Omit the `url` field entirely from your output.
 - **Notes are 12-25 words**. They orient the reader, not summarize the conversation. Bad: "Eric Ries discusses this concept in detail." Good: "The predictable force that drags successful companies into mediocrity once their golden goose attracts butchers."
@@ -219,6 +221,34 @@ def _cap_terms(terms: list[dict], limit: int = MAX_TERMS) -> list[dict]:
             if not t.get("url"):
                 kept_ids.add(id(t))
     return [t for t in terms if id(t) in kept_ids]
+
+
+def _drop_sponsor_terms(terms: list[dict], transcript: str) -> tuple[list[dict], set[str]]:
+    """Deterministic safety net: drop terminology entries whose name matches an
+    ad-read sponsor detected in the transcript. The prompt asks the model to skip
+    sponsors, but local models honor negative instructions unreliably — Mercury,
+    a paid spot ("brought to you by Mercury"), kept slipping through as a "company"
+    the host supposedly uses. This guarantees it never reaches the inspector."""
+    import os as _os
+    import sys as _sys
+    _sd = _os.path.dirname(_os.path.abspath(__file__))
+    if _sd not in _sys.path:
+        _sys.path.insert(0, _sd)
+    from extract_entity_links import detect_sponsors
+
+    sponsors = detect_sponsors(transcript)
+    if not sponsors:
+        return terms, set()
+    kept: list[dict] = []
+    dropped: set[str] = set()
+    for t in terms:
+        name = (t.get("term") or t.get("name") or "").strip().lower()
+        first = name.split()[0] if name else ""
+        if name and (name in sponsors or (first and first in sponsors)):
+            dropped.add(t.get("term") or name)
+            continue
+        kept.append(t)
+    return kept, dropped
 
 
 def fmt_chapters(sidecar: dict) -> str:
@@ -370,6 +400,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"existing: {len(existing_terms)} entries, new from LLM: {len(new_terms)} entries",
           file=sys.stderr)
     merged = merge_terms(existing_terms, new_terms)
+    merged, dropped_sponsors = _drop_sponsor_terms(
+        merged, transcript_path.read_text(encoding="utf-8"))
+    if dropped_sponsors:
+        print(f"dropped ad-read sponsor entities: {', '.join(sorted(dropped_sponsors))}",
+              file=sys.stderr)
     capped = _cap_terms(merged)
     if len(capped) < len(merged):
         print(f"capped {len(merged)} -> {len(capped)} entries (MAX_TERMS={MAX_TERMS})",
