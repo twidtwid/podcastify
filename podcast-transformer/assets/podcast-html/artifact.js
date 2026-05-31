@@ -73,11 +73,18 @@ const PodcastArtifacts = (() => {
             ${showNotes ? `<a class="folder-tab external" href="${esc(showNotes.url)}"${extAttrs(showNotes.url)}>Show notes <span class="ext" aria-hidden="true">↗</span></a>` : ""}
             ${officialTranscript ? `<a class="folder-tab external" href="${esc(officialTranscript.url)}"${extAttrs(officialTranscript.url)}>Official transcript <span class="ext" aria-hidden="true">↗</span></a>` : ""}
           </nav>
-          ${mode === "glance" ? `
-          <button type="button" class="inspector-toggle" data-inspector-toggle
-                  aria-pressed="${inspectorCollapsed() ? "true" : "false"}">
-            ${inspectorCollapsed() ? "Show sidebar" : "Hide sidebar"}
-          </button>` : ""}
+          <div class="topbar-controls">
+            ${mode === "glance" ? `
+            <button type="button" class="inspector-toggle" data-inspector-toggle
+                    aria-pressed="${inspectorCollapsed() ? "true" : "false"}">
+              ${inspectorCollapsed() ? "Show sidebar" : "Hide sidebar"}
+            </button>` : ""}
+            <button type="button" class="theme-toggle" data-theme-toggle
+                    aria-label="Toggle light/dark theme" aria-pressed="false" title="Light / dark">
+              <svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+              <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" hidden><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/></svg>
+            </button>
+          </div>
         </div>
       </header>`;
   }
@@ -419,6 +426,33 @@ const PodcastArtifacts = (() => {
     });
   }
 
+  // ─── Theme (light default, dark opt-in, sticky per reader) ─────────
+  const THEME_KEY = "render-as-html.theme";
+  function readTheme() {
+    try { return window.localStorage.getItem(THEME_KEY); } catch (e) { return null; }
+  }
+  function applyTheme(dark) {
+    document.body.classList.toggle("dark", dark);
+    qsa("[data-theme-toggle]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", dark ? "true" : "false");
+      const moon = btn.querySelector(".theme-moon");
+      const sun = btn.querySelector(".theme-sun");
+      if (moon) moon.hidden = dark;
+      if (sun) sun.hidden = !dark;
+    });
+    try { window.localStorage.setItem(THEME_KEY, dark ? "dark" : "light"); } catch (e) {}
+  }
+  function applyStoredTheme() {
+    // Light by default; never auto-follow the OS — only an explicit prior choice.
+    document.body.classList.toggle("dark", readTheme() === "dark");
+  }
+  function wireThemeToggle(root) {
+    const btn = root.querySelector("[data-theme-toggle]");
+    if (!btn) return;
+    applyTheme(document.body.classList.contains("dark"));
+    btn.addEventListener("click", () => applyTheme(!document.body.classList.contains("dark")));
+  }
+
   function wireInspectorToggle(root) {
     const btn = root.querySelector("[data-inspector-toggle]");
     const studio = root.querySelector(".studio");
@@ -570,17 +604,21 @@ const PodcastArtifacts = (() => {
 
   return {
     renderTranscriptBrowser(targetId) {
+      applyStoredTheme();
       const root = document.getElementById(targetId);
       root.innerHTML = renderTranscript(data());
       wireJumpLinks(root);
       wireSearch(root, "transcript");
       wireScrollSpy(root);
+      wireThemeToggle(root);
     },
     renderGlanceDashboard(targetId) {
+      applyStoredTheme();
       const root = document.getElementById(targetId);
       root.innerHTML = renderGlance(data());
       wireJumpLinks(root);
       wireInspectorToggle(root);
+      wireThemeToggle(root);
     },
   };
 })();

@@ -44,6 +44,24 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* Dark theme — opt-in via the topbar toggle (body.dark), never auto-followed
+   from the OS. Overrides only the palette tokens; category/tag accents carry. */
+body.dark {
+  --ink: #f0eee8;
+  --ink-soft: #c9c3b6;
+  --muted: #9a948a;
+  --paper: #16140f;
+  --paper-tint: #201d17;
+  --paper-card: #211e19;
+  --rule: #38332b;
+  --rule-soft: #2c2820;
+  --accent: #e0794f;
+  --hit: #5f4f1c;
+  --card-bg: #211e19;
+  --card-border: #38332b;
+  --card-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 8px 22px -12px rgba(0,0,0,0.6);
+}
+
 * { box-sizing: border-box; }
 
 html, body { margin: 0; padding: 0; }
@@ -200,6 +218,30 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
 }
 .inspector-toggle:hover { background: var(--paper-card); color: var(--ink); }
 .inspector-toggle[aria-pressed="true"] { color: var(--ink); }
+
+.topbar-controls {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.topbar-controls .inspector-toggle { margin-left: 0; }
+.theme-toggle {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: var(--paper-tint);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 0.4rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.theme-toggle:hover { background: var(--paper-card); color: var(--accent); }
+.theme-toggle svg { width: 16px; height: 16px; display: block; }
 
 .topbar .brand {
   display: flex;
