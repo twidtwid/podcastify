@@ -135,10 +135,44 @@ What the agent does when invoked:
 
 Keep the report short. The artifact is the deliverable, not the chat message.
 
+## Add an illustration (illo) — standard finishing move
+
+After the briefing builds, embed one editorial illo illustration in it. This reliably makes the
+briefing feel hand-made and is the default finish unless the user says no.
+
+```bash
+python3 podcast-transformer/scripts/add_illo.py <episode-dir> \
+  --prompt-file scene.txt --caption "…" --credit "illo · riso"
+# or inject an image you already rendered:
+python3 podcast-transformer/scripts/add_illo.py <episode-dir> --image /tmp/scene.png --caption "…"
+```
+
+- **Idempotent + self-contained:** the figure is stamped with `ILLO-HERO` markers and inlined as a
+  compressed data-URI JPEG, so re-running replaces (not duplicates) it and the briefing stays
+  portable for report-portal / Funnel publishing. Run it again after any pipeline re-render.
+- **Make the scene load-bearing and on-thesis** — the mascot *performs* the episode's core idea
+  (e.g. Founder Mode → the mascot down inside the company's machine working the gears while a
+  clipboard-manager stands disconnected outside).
+- **Pick a character that fits the episode.** Blot (illo's default ink-drop mascot) is the neutral
+  pick for business/tech/general episodes; topic packs when they fit; **Cadence is the
+  fitness/health coach — only for wellness episodes.** Generation uses the free Codex backend.
+
+### Publish the bundle (report-portal)
+
+```bash
+~/.claude/skills/report-portal/bin/report-portal.py add <…/final> \
+  --symlink-dir <slug> --entry podcast-at-a-glance.html --kind podcast --title "…" --overwrite
+~/.claude/skills/report-portal/bin/report-portal.py publish <slug>
+```
+`--symlink-dir`+`--entry` keeps the Briefing/Transcript tabs working and auto-detects `og-card.png`
+as the thumbnail. Publishing a single file breaks the transcript cross-link.
+
 ## Recovery
 
 - **Draft has <6 takeaways or <6 claims** → re-run `draft_notes.py --force` once. The model is stochastic and occasionally produces thin output.
-- **Ollama call timed out** → check `ollama ps` for stuck loads; restart `ollama serve` if needed. Don't switch backends silently.
+- **Draft step 500s at exactly `2m0s` / wedges on a long transcript** (check `~/.ollama/logs/server.log` for `500 | 2m0s | POST /api/chat` and `n_ctx_seq = 16384`) → **context-window starvation.** The transcript is ~25k tokens but the draft model was served from an instance another consumer already loaded at a *small* context (e.g. 16384); Ollama reuses that resident instance and ignores our `num_ctx: 65536`, so the prompt overflows. NOT a GPU/RAM problem (diagnose with the log, not by guessing), NOT the model/quant. **Fix → run the LLM steps on Ollama Cloud** (full context, no local contention, no Anthropic): `PODCAST_DRAFT_MODEL=gemma4:31b-cloud PODCAST_SHARPEN_MODEL=gemma4:31b-cloud`. Verify cloud signin with `ollama list | grep cloud`.
+- **Cloud model returns empty content / "No JSON object found in model output"** → you picked a *reasoning* cloud model (e.g. `deepseek-v4-pro:cloud`, `deepseek-v4-flash:cloud`). They dump output into a `thinking` field and leave `content` empty under the grammar-constrained `format:"json"` step. **Use a non-reasoning model — `gemma4:31b-cloud` (the pipeline's native family) honors `format:"json"`.**
+- **Ollama call timed out** → check `ollama ps` for stuck loads; restart `ollama serve` only if truly hung. Prefer the Ollama Cloud fallback above over a local restart. Never fail over to the Anthropic API.
 - **URL ingest reports unsupported domain** → ask the user for a local resource file or transcript and continue with the file-based workflow.
 - **URL ingest found metadata but no transcript** → ask the user for the transcript text/file, or use a rendered-DOM fallback only if the user wants to debug that provider.
 - **Direct HTTP misses rendered transcript content** → prefer a rendered-DOM fallback in this order: Chrome headless `--dump-dom`, local Playwright, Browserless `/smart-scrape` if `BROWSERLESS_TOKEN` is available, Browserless BrowserQL for selector or network-response capture, Firecrawl scrape if `FIRECRAWL_API_KEY` is available, Browser Use Cloud CDP if `BROWSER_USE_API_KEY` is available, then `browse-cli` for users who already have it configured.
@@ -151,7 +185,7 @@ Keep the report short. The artifact is the deliverable, not the chat message.
 - **Don't echo the transcript back through a `Write` call.** The user already has the bytes; URL ingest or local files should create `source/user-provided-transcript.txt`. Echoing a 100KB transcript through tool input takes minutes and bloats the conversation.
 - **Don't hand-author per-episode HTML.** The renderer is one file. Update assets in `podcast-transformer/assets/podcast-html/` and re-run.
 - **Don't second-guess user-provided inputs.** A user transcript means skip transcription. User-supplied speaker names mean don't re-verify against voice characteristics. User `episode.notes.json` means trust its claims.
-- **Don't switch backends silently.** If Ollama is down, surface the error with the fix. Don't fail over to a paid API the user didn't ask for.
+- **⛔ Never fail over to the Anthropic API.** This pipeline is deliberately local/free. When a local model fails, swap the *model* (or use **Ollama Cloud**, e.g. `gemma4:31b-cloud`) — never `--draft-backend api`. Do not even ask; cloud-Ollama is the sanctioned recovery. (The `--draft-backend api` flag exists but is off-limits here.)
 - **Don't extend the pipeline in-loop.** New behavior belongs in a new script wired into `extract_one.py`, not in inline shell commands the user has to repeat next time.
 
 ## Configuration
@@ -170,7 +204,14 @@ Dump the active config any time:
 python3 podcast-transformer/scripts/extract_one.py --show-config /dev/null
 ```
 
-For the paid Anthropic API as a draft fallback, pass `--draft-backend api` with `ANTHROPIC_API_KEY` set.
+**Sanctioned fallback when a local model fails (timeout / context starvation / thin output) — Ollama Cloud, not Anthropic:**
+
+```bash
+PODCAST_DRAFT_MODEL="gemma4:31b-cloud" PODCAST_SHARPEN_MODEL="gemma4:31b-cloud" \
+  python3 podcast-transformer/scripts/extract_one.py "<url>"
+```
+
+Cloud models route through the signed-in local daemon (`ollama list | grep cloud`), keep the same `/api/chat` API, give full context, and cost nothing beyond the subscription. Use a **non-reasoning** model — `gemma4:31b-cloud` (native family) honors `format:"json"`; `deepseek-v4-*` reasoning models return empty `content` under it. The `--draft-backend api` (paid Anthropic) flag exists but is **off-limits** — see Anti-patterns.
 
 ## Where to find code + design docs
 
